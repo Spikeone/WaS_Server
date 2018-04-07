@@ -38,6 +38,10 @@ namespace WAS_LoginServer
         private List<PlayerObject> m_listPlayerObject;
         private List<Grid> m_listGrids;
 
+        private MySqlConnection sqlconn = new MySqlConnection("server=localhost;user=root;database=was;port=3306;password=s25;");
+
+        private bool hasDBConnection = false;
+
         public frmLoginServer()
         {
             InitializeComponent();
@@ -57,6 +61,22 @@ namespace WAS_LoginServer
             m_listGrids = new List<Grid>();
 
             m_objGuidHandler = new GameObjectGUIDHandler();
+
+            try
+            {
+                //Console.WriteLine("Connecting to MySQL...");
+                txbLog.AppendText("Connecting to MySQL...\n");
+                sqlconn.Open();
+                hasDBConnection = true;
+                // Perform database operations 
+            }
+            catch (Exception ex)
+            {
+                txbLog.AppendText(ex.ToString() + "\n");
+                sqlconn.Close();
+                hasDBConnection = false;
+                //Console.WriteLine(ex.ToString());
+            }
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -77,9 +97,19 @@ namespace WAS_LoginServer
             readDatabase();
 
             m_ServerSocket.Listen(1);
-            lblStatus.Text = "Running";
-            lblStatus.BackColor = Color.Green;
-            txbLog.AppendText("Server is running\n");
+
+            if (hasDBConnection)
+            {
+                lblStatus.Text = "Running";
+                lblStatus.BackColor = Color.Green;
+                txbLog.AppendText("Server is running\n");
+            }
+            else
+            {
+                lblStatus.Text = "No DB";
+                lblStatus.BackColor = Color.Yellow;
+                txbLog.AppendText("Server is a bit running\n");
+            }
 
             m_ServerSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
         }
@@ -288,24 +318,80 @@ namespace WAS_LoginServer
         public void handleLoginRequest(Socket s, string strName, string strPassword)
         {
             // Check something in DB
+            // but only if server is running
+            if(!hasDBConnection)
+            {
+                // 1 = type
+                // 2 = status
+                // 3 = guid
+                string strData = "|0x002/0/0";
+                // currentguid = 
+                SendData(s, strData);
+                lbxClients.Items.RemoveAt(lbxClients.Items.IndexOf(s.RemoteEndPoint.ToString()));
+                return;
+            }
+
+            // lets check in DB if player may login
+            ulong ulAccId = 0;
+            ulong ulGmLevel = 0;
+            ulong ulStatus = 1;
+
+            int iLoginResult = loginPlayer(strName, strPassword, ref ulAccId, ref ulGmLevel, ref ulStatus);
+
+            if(iLoginResult != 1)
+            {
+                // Player can't login
+                // TODO: use some good logic behind status
+                string strData = "|0x002/" + iLoginResult.ToString() + "/0";
+                SendData(s, strData);
+                lbxClients.Items.RemoveAt(lbxClients.Items.IndexOf(s.RemoteEndPoint.ToString()));
+                return;
+            }
+
+            txbLog.AppendText("Player " + strName + " had a valid login\n");
+
+            ulong ulGUID = 0;
+            string strNickName = "";
+            ulong ulRace = 0;
+            ulong ulGender = 0;
+            ulong ulLevel = 1;
+            ulong ulXP = 0;
+            ulong ulMoney = 0;
+            ulong ulFlags1 = 0;
+            ulong ulFlags2 = 0;
+            float fPosX = 0.0f;
+            float fPosY = 0.0f;
+            float fPosZ = 0.0f;
+            float fRotX = 0.0f;
+            float fRotY = 0.0f;
+            float fRotZ = 0.0f;
+            ulong ulMap = 0;
+
+            // now we should read the character object
+            if (!readCharacter(ulAccId, ref ulGUID, ref strNickName, ref ulRace, ref ulGender, ref ulLevel, ref ulXP, ref ulMoney, ref ulFlags1, ref ulFlags2, ref fPosX, ref fPosY, ref fPosZ, ref fRotX, ref fRotY, ref fRotZ, ref ulMap))
+            {
+                lbxClients.Items.RemoveAt(lbxClients.Items.IndexOf(s.RemoteEndPoint.ToString()));
+                return;
+            }
+
+            txbLog.AppendText("User " + strName + " has a valid character\n");
+
 
             // Types
             // |0x002 = login result
             // |0x003 = new player
 
             // everything is fine, add it
-            UInt64 uiNewGUID = m_objGuidHandler.generateNewGUID();
-
-            m_listPlayerObject.Add(new PlayerObject(uiNewGUID, s, strName));
+            m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strName));
 
             // tell player who he is
             // build message
-            string strLoginResult = "|0x002/" + uiNewGUID.ToString();
+            string strLoginResult = "|0x002/1/" + ulGUID.ToString();
             // currentguid = 
             SendData(s, strLoginResult);
 
             // now broadcast new player to everybody
-            string strBroadcastNewPlayer = "|0x003/" + uiNewGUID.ToString() + "/" + strName;
+            string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strName;
             BroadcastToPlayersExcept(s, strBroadcastNewPlayer);
 
             lblConnectedClients.Text = "Connected clients: " + m_listPlayerObject.Count.ToString();
@@ -314,32 +400,106 @@ namespace WAS_LoginServer
             SendAllPlayersToSocket(s);
         }
 
+        private bool readCharacter(ulong ulAccId, ref ulong ulGUID, ref string strNickName, ref ulong ulRace, ref ulong ulGender, ref ulong ulLevel, ref ulong ulXP, ref ulong ulMoney, ref ulong ulFlags1, ref ulong ulFlags2, ref float fPosX, ref float fPosY, ref float fPosZ, ref float fRotX, ref float fRotY, ref float fRotZ, ref ulong ulMap)
+        {
+            if (!hasDBConnection)
+                return false; // no DB
+
+            string sql = "SELECT * from characters where account='" + ulAccId.ToString() + "'";
+            MySqlCommand cmd = new MySqlCommand(sql, sqlconn);
+            MySqlDataReader rdr = cmd.ExecuteReader();
+
+            if (!rdr.HasRows)
+            {
+                rdr.Close();
+                return false; // no character
+            }
+
+            while (rdr.Read())
+            {
+                ulGUID = ulong.Parse(rdr.GetValue(0).ToString());
+
+                // 1 = account
+
+                strNickName = rdr.GetValue(2).ToString();
+                ulRace = ulong.Parse(rdr.GetValue(3).ToString());
+                ulGender = ulong.Parse(rdr.GetValue(4).ToString());
+                ulLevel = ulong.Parse(rdr.GetValue(5).ToString());
+                ulXP = ulong.Parse(rdr.GetValue(6).ToString());
+                ulMoney = ulong.Parse(rdr.GetValue(7).ToString());
+                ulFlags1 = ulong.Parse(rdr.GetValue(8).ToString());
+                ulFlags2 = ulong.Parse(rdr.GetValue(9).ToString());
+
+                fPosX = float.Parse(rdr.GetValue(10).ToString().Replace(',', '.'), m_objFormatProvider);
+                fPosY = float.Parse(rdr.GetValue(11).ToString().Replace(',', '.'), m_objFormatProvider);
+                fPosZ = float.Parse(rdr.GetValue(12).ToString().Replace(',', '.'), m_objFormatProvider);
+
+                fRotX = float.Parse(rdr.GetValue(13).ToString().Replace(',', '.'), m_objFormatProvider);
+                fRotY = float.Parse(rdr.GetValue(14).ToString().Replace(',', '.'), m_objFormatProvider);
+                fRotZ = float.Parse(rdr.GetValue(15).ToString().Replace(',', '.'), m_objFormatProvider);
+
+                ulMap = ulong.Parse(rdr.GetValue(16).ToString());
+            }
+            rdr.Close();
+
+            return true;
+        }
+
+        private int loginPlayer(string strName, string strPassword, ref ulong ID, ref ulong gm_level, ref ulong status)
+        {
+            if (!hasDBConnection)
+                return 2; // no DB
+
+
+            string sql = "SELECT * from accounts where username='" + strName + "' and sha_pass='" + strPassword + "'";
+
+            //txbLog.AppendText("SQL: "+ sql + "\n");
+            //
+            //return 2;
+
+            MySqlCommand cmd = new MySqlCommand(sql, sqlconn);
+            MySqlDataReader rdr = cmd.ExecuteReader();
+
+            // no result = no valid login
+            if (!rdr.HasRows)
+            {
+                rdr.Close();
+                return 3; // no Account
+            }
+
+            while (rdr.Read())
+            {
+                ID = ulong.Parse(rdr.GetValue(0).ToString());
+
+                // 1 = username
+                // 2 = sha_pass
+
+                gm_level = ulong.Parse(rdr.GetValue(3).ToString());
+
+                // 4 = email
+                // 5 = joindate
+                // 6 = lastip
+                // 7 = lastlogin
+
+                status = ulong.Parse(rdr.GetValue(8).ToString());
+            }
+            rdr.Close();
+
+            if (status != 0)
+                return 4; // not active
+            else
+                return 1; // no error
+        }
+
         private void readDatabase()
         {
-            string connStr ="server=localhost;user=root;database=was;port=3306;password=s25;";
-            MySqlConnection conn = new MySqlConnection(connStr);
-
-            try
+            if (hasDBConnection)
             {
-                //Console.WriteLine("Connecting to MySQL...");
-                txbLog.AppendText("Connecting to MySQL...\n");
-                conn.Open();
-                // Perform database operations 
-            }
-            catch (Exception ex)
-            {
-                txbLog.AppendText(ex.ToString() + "\n");
-                conn.Close();
-                return;
-                //Console.WriteLine(ex.ToString());
+                readTable_gameobject_template(sqlconn);
+                readTable_gameobject(sqlconn);
             }
 
-            readTable_gameobject_template(conn);
-            readTable_gameobject(conn);
-
-            conn.Close();
             txbLog.AppendText("MySQL Done.\n");
-            //Console.WriteLine("Done.");
         }
 
         public bool readTable_gameobject_template(MySqlConnection conn)
@@ -356,7 +516,7 @@ namespace WAS_LoginServer
                     UInt64 uiType       = UInt64.Parse(rdr.GetValue(1).ToString());
                     UInt64 uiDisplayID  = UInt64.Parse(rdr.GetValue(2).ToString());
                     string strName      = rdr.GetValue(3).ToString();
-                    float  fScale       = float.Parse(rdr.GetValue(4).ToString(), m_objFormatProvider);
+                    float  fScale       = float.Parse(rdr.GetValue(4).ToString().Replace(',', '.'), m_objFormatProvider);
 
                     UInt64 uiData0 = UInt64.Parse(rdr.GetValue(5).ToString());
                     UInt64 uiData1 = UInt64.Parse(rdr.GetValue(6).ToString());
@@ -460,8 +620,12 @@ namespace WAS_LoginServer
             // 11 = Vec Y                               splittedData[11]
             // 12 = Vec Z                               splittedData[12]
 
+            if (!m_listPlayerObject.Exists(x => x.m_uiGUID == ulong.Parse(splittedData[1], m_objFormatProvider)))
+                return;
+
             // Player needs to exist
             PlayerObject objTempPlayer = m_listPlayerObject.Find(x => x.m_uiGUID == ulong.Parse(splittedData[1], m_objFormatProvider));
+
             ulong ulGUID = 0;
             ushort usType = 0;
             float posX = 0.0f;
@@ -493,7 +657,7 @@ namespace WAS_LoginServer
                 return;
             }
 
-            objTempPlayer.updatePlayerBodyTransform(usType, posX, posY, posZ, rotX, rotY, rotZ, rotW);
+            //objTempPlayer.updatePlayerBodyTransform(usType, posX, posY, posZ, rotX, rotY, rotZ, rotW);
 
             if (usType == 0)
             {
