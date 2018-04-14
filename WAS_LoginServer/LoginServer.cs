@@ -19,6 +19,7 @@ enum DATABASE_FIELD_COUNT
 {
     GAMEOBJECT_TEMPLATE = 15,
     GAMEOBJECT = 11,
+    ITEM_TEMPLATE = 26,
 }
 
 namespace WAS_LoginServer
@@ -35,18 +36,24 @@ namespace WAS_LoginServer
         private List<GameObjectTemplate_DB> m_listGameObjectTemplates;
         private List<GameObject_DB> m_listGameObjects;
 
+        private List<ItemTemplate_DB> m_listItemTemplates;
+
         private List<PlayerObject> m_listPlayerObject;
         private List<Grid> m_listGrids;
 
-        private MySqlConnection sqlconn = new MySqlConnection("server=localhost;user=root;database=was;port=3306;password=s25;");
+        private MySqlConnection sqlconn; //= new MySqlConnection("server=localhost;user=root;database=was;port=3306;password=s25;");
 
         private bool hasDBConnection = false;
+
+        Configuration objConfig = new Configuration(@".\was.conf");
 
         public frmLoginServer()
         {
             InitializeComponent();
 
             CheckForIllegalCrossThreadCalls = false;
+
+            sqlconn = new MySqlConnection("server=" + objConfig["server"] + ";user=" + objConfig["user"] + ";database=" + objConfig["database"] + ";port=" + objConfig["port"] + ";password=" + objConfig["password"] + ";");
 
             if (!Directory.Exists("log"))
                 Directory.CreateDirectory("log");
@@ -57,6 +64,8 @@ namespace WAS_LoginServer
 
             m_listGameObjectTemplates = new List<GameObjectTemplate_DB>();
             m_listGameObjects = new List<GameObject_DB>();
+
+            m_listItemTemplates = new List<ItemTemplate_DB>();
 
             m_listGrids = new List<Grid>();
 
@@ -497,6 +506,7 @@ namespace WAS_LoginServer
             {
                 readTable_gameobject_template(sqlconn);
                 readTable_gameobject(sqlconn);
+                readTable_item_template(sqlconn);
             }
 
             txbLog.AppendText("MySQL Done.\n");
@@ -598,6 +608,86 @@ namespace WAS_LoginServer
                 }
             }
             txbLog.AppendText("Gameobject loaded: " + m_listGameObjects.Count.ToString() + " Entries.\n");
+
+            rdr.Close();
+            return true;
+        }
+
+        public bool readTable_item_template(MySqlConnection conn)
+        {
+            string sql = "SELECT * FROM item_template";
+            MySqlCommand cmd = new MySqlCommand(sql, conn);
+            MySqlDataReader rdr = cmd.ExecuteReader();
+
+            while (rdr.Read())
+            {
+                if (rdr.FieldCount == (int)DATABASE_FIELD_COUNT.ITEM_TEMPLATE)
+                {
+                    ulong ulEntry =         ulong.Parse(rdr.GetValue(0).ToString(), m_objFormatProvider);
+                    ulong ulClass =         ulong.Parse(rdr.GetValue(1).ToString(), m_objFormatProvider);
+                    ulong ulSubClass =      ulong.Parse(rdr.GetValue(2).ToString(), m_objFormatProvider);
+                    string strName =        rdr.GetValue(3).ToString();
+                    ulong ulDisplayId =     ulong.Parse(rdr.GetValue(4).ToString(), m_objFormatProvider);
+                    ulong ulQuality =       ulong.Parse(rdr.GetValue(5).ToString(), m_objFormatProvider);
+                    ulong ulPrice =         ulong.Parse(rdr.GetValue(6).ToString(), m_objFormatProvider);
+                    ulong ulItemLevel =     ulong.Parse(rdr.GetValue(7).ToString(), m_objFormatProvider);
+                    ulong ulMaxUses =       ulong.Parse(rdr.GetValue(8).ToString(), m_objFormatProvider);
+
+                    int iOffset = 9;
+
+                    ulong[] ulAllowances = new ulong[2];
+                    for(ulong i = 0; i < 2; i++)
+                    {
+                        ulAllowances[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    ulong[] ulRequirements = new ulong[3];
+                    for (ulong i = 0; i < 3; i++)
+                    {
+                        ulRequirements[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    ulong[] ulArmor = new ulong[2];
+                    for (ulong i = 0; i < 2; i++)
+                    {
+                        ulArmor[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    ulong[] ulDamage = new ulong[2];
+                    for (ulong i = 0; i < 2; i++)
+                    {
+                        ulDamage[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    ulong[] ulStatTypes = new ulong[4];
+                    for (ulong i = 0; i < 4; i++)
+                    {
+                        ulStatTypes[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    ulong[] ulStatValues = new ulong[4];
+                    for (ulong i = 0; i < 4; i++)
+                    {
+                        ulStatValues[i] = ulong.Parse(rdr.GetValue(iOffset).ToString(), m_objFormatProvider);
+                        iOffset++;
+                    }
+
+                    m_listItemTemplates.Add(new ItemTemplate_DB(ulEntry, ulClass, ulSubClass, strName, ulDisplayId, ulQuality, ulPrice, ulItemLevel, ulMaxUses, ulAllowances, ulRequirements, ulArmor, ulDamage, ulStatTypes, ulStatValues));
+                }
+                else
+                {
+                    string row = "";
+                    for (int i = 0; i < rdr.FieldCount; i++)
+                        row += rdr.GetValue(i).ToString() + ", ";
+                    txbLog.AppendText("Could not load item_template: " + row + "\n");
+                }
+            }
+            txbLog.AppendText("item_template loaded: " + m_listItemTemplates.Count.ToString() + " Entries.\n");
 
             rdr.Close();
             return true;
@@ -1100,6 +1190,327 @@ namespace WAS_LoginServer
         }
     }
 
+    public class ItemTemplate_DB
+    {
+        ulong ulEntry;
+        ulong ulClass;
+        ulong ulSubClass;
+        string strName;
+        ulong ulDisplayId;
+        ulong ulQuality;
+        ulong ulPrice;
+        ulong ulItemLevel;
+        ulong ulMaxUses;
+
+        // Allowed Classes
+        // Allowed Races
+        private ulong[] ulAllowances = new ulong[2];
+
+        // Required Level
+        // Required Skill
+        // Required Reputation
+        private ulong[] ulRequirements = new ulong[3];
+
+        // Magic Armor
+        // Physical Armor
+        private ulong[] ulArmor = new ulong[2];
+
+        // Damage min
+        // Damage max
+        private ulong[] ulDamage = new ulong[2];
+
+        // Stat Type 1
+        // Stat Type 2
+        // Stat Type 3
+        // Stat Type 4
+        private ulong[] ulStatTypes = new ulong[4];
+
+        // Stat Value 1
+        // Stat Value 2
+        // Stat Value 3
+        // Stat Value 4
+        private ulong[] ulStatValues = new ulong[4];
+
+        public ulong getEntry() { return ulEntry; }
+
+        public ulong getItemTemplateClass() { return ulClass; }
+
+        public ulong getItemTemplateSubClass() { return ulSubClass; }
+
+        public string getItemTemplateName() { return strName; }
+
+        public ulong getItemTemplateDisplayId() { return ulDisplayId; }
+
+        public ulong getItemTemplateQuality() { return ulQuality; }
+
+        public ulong getItemTemplatePrice() { return ulPrice; }
+
+        public ulong getItemTemplateLevel() { return ulItemLevel; }
+
+        public ulong getItemTemplateMaxUses() { return ulMaxUses; }
+
+        // Allowance
+
+        public ulong getItemTemplateAllowance(ulong uiIndex)
+        {
+            if (uiIndex > 1)
+                return 0;
+            else
+                return ulAllowances[uiIndex];
+        }
+
+        public void getItemTemplateAllowance(ref ulong ulClass, ref ulong ulRace)
+        {
+            ulClass = ulAllowances[0];
+            ulRace = ulAllowances[1];
+        }
+
+        private bool isItemTemplateAllowed(ulong ulIndex, ulong ulValue)
+        {
+            if (ulAllowances[ulIndex] == 0)
+                return true;
+
+            return (ulAllowances[ulIndex] & ulValue) == ulValue;
+        }
+
+        public bool isItemTemplateAllowedForClass(ulong ulClass)
+        {
+            return isItemTemplateAllowed(0, ulClass);
+        }
+
+        public bool isItemTemplateAllowedForRace(ulong ulRace)
+        {
+            return isItemTemplateAllowed(1, ulRace);
+        }
+
+        public bool isItemTemplateAllowedForCharacter(ulong ulClass, ulong ulRace)
+        {
+            return isItemTemplateAllowedForClass(ulClass) && isItemTemplateAllowedForRace(ulRace);
+        }
+
+        // Requirement
+
+        public ulong getItemTemplateRequirement(ulong ulIndex)
+        {
+            if (ulIndex > 2)
+                return 0;
+            else
+                return ulRequirements[ulIndex];
+        }
+
+        public void getItemTemplateRequirements(ref ulong ulLevel, ref ulong ulSkill, ref ulong ulReputation)
+        {
+            ulLevel = ulRequirements[0];
+            ulSkill = ulRequirements[1];
+            ulReputation = ulRequirements[2];
+        }
+
+        private bool meetsItemTemplateRequirement(ulong ulIndex, ulong ulValue)
+        {
+            if (ulRequirements[ulIndex] == 0)
+                return true;
+
+            return (ulRequirements[ulIndex] & ulValue) == ulValue;
+        }
+
+        public bool meetsItemTemplateLevelRequirement(ulong ulLevel)
+        {
+            return meetsItemTemplateRequirement(0, ulLevel);
+        }
+
+        public bool meetsItemTemplateSkillRequirement(ulong ulSkill)
+        {
+            return meetsItemTemplateRequirement(1, ulSkill);
+        }
+
+        public bool meetsItemTemplateReputationRequirement(ulong ulReputation)
+        {
+            return meetsItemTemplateRequirement(2, ulReputation);
+        }
+
+        public bool meetsItemTemplateRequirementForCharacter(ulong ulLevel, ulong ulSkill, ulong ulReputation)
+        {
+            return meetsItemTemplateLevelRequirement(ulLevel) && meetsItemTemplateSkillRequirement(ulSkill) && meetsItemTemplateReputationRequirement(ulReputation);
+        }
+
+        // Armor
+
+        private ulong getItemTemplateArmor(ulong ulIndex)
+        {
+            if (ulIndex > 1)
+                return 0;
+            else
+                return ulArmor[ulIndex];
+        }
+
+        public ulong getItemTemplateMagicArmor() { return getItemTemplateArmor(0); }
+
+        public ulong getItemTemplatePhysicalArmor() { return getItemTemplateArmor(1); }
+
+        public void getItemTemplateArmor(ref ulong ulMagicArmor, ref ulong ulPhysicalArmor)
+        {
+            ulMagicArmor = getItemTemplateArmor(0);
+            ulPhysicalArmor = getItemTemplateArmor(1);
+        }
+
+        // Damage
+
+        private ulong getItemTemplateDamage(ulong ulIndex)
+        {
+            if (ulIndex > 1)
+                return 0;
+            else
+                return ulDamage[ulIndex];
+        }
+
+        public ulong getItemTemplateMinDamage() { return getItemTemplateDamage(0); }
+
+        public ulong getItemTemplateMaxDamage() { return getItemTemplateDamage(1); }
+
+        public void getItemTemplateDamage(ref ulong ulMinDamage, ref ulong ulMaxDamage)
+        {
+            ulMinDamage = getItemTemplateDamage(0);
+            ulMaxDamage = getItemTemplateDamage(1);
+        }
+
+        // Stats
+
+        private ulong getItemTemplateStatType(ulong ulIndex)
+        {
+            if (ulIndex > 3)
+                return 0;
+            else
+                return ulStatTypes[ulIndex];
+        }
+
+        private ulong getItemTemplateStatValue(ulong ulIndex)
+        {
+            if (ulIndex > 3)
+                return 0;
+            else
+                return ulStatValues[ulIndex];
+        }
+
+        public bool hasItemTemplateStat(ulong ulstat)
+        {
+            for (ulong i = 0; i < 4; i++)
+                if (getItemTemplateStatType(i) == ulstat)
+                    return true;
+
+            return false;
+        }
+
+        public ulong getItemTemplateStatCount()
+        {
+            for (ulong i = 0; i < 4; i++)
+                if (getItemTemplateStatType(i) == 0)
+                    return (i + 1);
+
+            return 0;
+        }
+
+        public void getItemTemplateStat(ulong ulIndex, ref ulong ulType, ref ulong ulValue)
+        {
+            if((ulIndex + 1) > getItemTemplateStatCount())
+            {
+                ulType = 0;
+                ulValue = 0;
+
+            }
+
+            ulType = getItemTemplateStatType(ulIndex);
+            ulValue = getItemTemplateStatValue(ulIndex);
+        }
+
+        // Constructor
+
+        public ItemTemplate_DB(ulong ulEntry,ulong ulClass, ulong ulSubClass, string strName, ulong ulDisplayId, ulong ulQuality, ulong ulPrice, ulong ulItemLevel, ulong ulMaxUses,
+                                ulong[] ulAllowances, ulong[] ulRequirements, ulong[] ulArmor, ulong[] ulDamage, ulong[] ulStatTypes, ulong[] ulStatValues)
+        {
+            this.ulEntry = ulEntry;
+            this.ulClass = ulClass;
+            this.ulSubClass = ulSubClass;
+            this.strName = strName;
+            this.ulDisplayId = ulDisplayId;
+            this.ulQuality = ulQuality;
+            this.ulPrice = ulPrice;
+            this.ulItemLevel = ulItemLevel;
+            this.ulMaxUses = ulMaxUses;
+
+            for (ulong i = 0; i < 2; i++)
+                this.ulAllowances[i] = ulAllowances[i];
+
+            for (ulong i = 0; i < 3; i++)
+                this.ulRequirements[i] = ulRequirements[i];
+
+            for (ulong i = 0; i < 2; i++)
+                this.ulArmor[i] = ulArmor[i];
+
+            for (ulong i = 0; i < 2; i++)
+                this.ulDamage[i] = ulDamage[i];
+
+            for (ulong i = 0; i < 4; i++)
+                this.ulStatTypes[i] = ulStatTypes[i];
+
+            for (ulong i = 0; i < 4; i++)
+                this.ulStatValues[i] = ulStatValues[i];
+        }
+
+        // Serializer
+
+        // returns a string as following:
+        // 
+        public string getSerializedData(CultureInfo objFormatProvider)
+        {
+            string[] strData = new string[26];
+
+            strData[0] = ulEntry.ToString(objFormatProvider);
+            strData[1] = ulClass.ToString(objFormatProvider);
+            strData[2] = ulSubClass.ToString(objFormatProvider);
+            strData[3] = strName;
+            strData[4] = ulDisplayId.ToString(objFormatProvider);
+            strData[5] = ulQuality.ToString(objFormatProvider);
+            strData[6] = ulPrice.ToString(objFormatProvider);
+            strData[7] = ulItemLevel.ToString(objFormatProvider);
+            strData[8] = ulMaxUses.ToString(objFormatProvider);
+
+            strData[9] = ulAllowances[0].ToString(objFormatProvider);
+            strData[10] = ulAllowances[1].ToString(objFormatProvider);
+
+            strData[11] = ulRequirements[0].ToString(objFormatProvider);
+            strData[12] = ulRequirements[1].ToString(objFormatProvider);
+            strData[13] = ulRequirements[3].ToString(objFormatProvider);
+
+            strData[14] = ulArmor[0].ToString(objFormatProvider);
+            strData[15] = ulArmor[1].ToString(objFormatProvider);
+
+            strData[16] = ulDamage[0].ToString(objFormatProvider);
+            strData[17] = ulDamage[1].ToString(objFormatProvider);
+
+            strData[18] = ulStatTypes[0].ToString(objFormatProvider);
+            strData[19] = ulStatTypes[1].ToString(objFormatProvider);
+            strData[20] = ulStatTypes[2].ToString(objFormatProvider);
+            strData[21] = ulStatTypes[3].ToString(objFormatProvider);
+
+            strData[22] = ulStatValues[0].ToString(objFormatProvider);
+            strData[23] = ulStatValues[1].ToString(objFormatProvider);
+            strData[24] = ulStatValues[2].ToString(objFormatProvider);
+            strData[25] = ulStatValues[3].ToString(objFormatProvider);
+
+            string strReturnString = "";
+
+            for(ulong i = 0; i < 26; i++)
+            {
+                strReturnString += strData[i];
+
+                if (i < 25)
+                    strReturnString += "/";
+            }
+
+            return strReturnString;
+        }
+    }
+
     public class Grid
     {
         private string strGridID;
@@ -1136,6 +1547,103 @@ namespace WAS_LoginServer
         {
             return strGridID;
         }
+    }
+
+    class Configuration
+    {
+        private Dictionary<string, string> objConfig = new Dictionary<string, string>();
+
+        public string this[string strKey]
+        {
+            get
+            {
+                return stringGetKeyValue(strKey);
+            }
+        }
+
+        public Configuration(string strPath)
+        {
+            if (!File.Exists(strPath))
+            {
+                // Create a file to write to.
+                string[] createText =
+                {
+                    "###############################################################################",
+                    "# ,^.                 __    __                _                           /^\\ #",
+                    "# |||                / / /\\ \\ \\__ _ _ __   __| |___                  /\\   \"V\" #",
+                    "# |||       _T_      \\ \\/  \\/ / _` | '_ \\ / _` / __|                /__\\   I  #",
+                    "# |||   .-.[:|:].-.   \\  /\\  / (_| | | | | (_| \\__ \\               //..\\\\  I  #",
+                    "# ===_ /\\|  \"'\"  |/    \\/  \\/ \\__,_|_| |_|\\__,_|___/               \\].`[/  I  #",
+                    "#  E]_|\\/ \\--|-|''''|         /_\\  _ __   __| |                    /l\\/j\\  (] #",
+                    "#  O  `'  '=[:]| A  |        //_\\\\| '_ \\ / _` |                   /. ~~ ,\\/I  #",
+                    "#         /\"\"\"\"|  P |       /  _  \\ | | | (_| |                   \\\\L__j^\\/I  #",
+                    "#        /\"\"\"\"\"`.__.'       \\_/ \\_/_| |_|\\__,_|           _        \\/--v}  I  #",
+                    "#       []\"/\"\"\"\\\"[]             / _\\_      _____  _ __ __| |___    |    |  I  #",
+                    "#       | \\     / |             \\ \\\\ \\ /\\ / / _ \\| '__/ _` / __|   |    |  I  #",
+                    "#       | |     | |             _\\ \\\\ V  V / (_) | | | (_| \\__ \\   |    l  I  #",
+                    "#     <\\\\\\)     (///>           \\__/ \\_/\\_/ \\___/|_|  \\__,_|___/ _/j  L l\\_!  #",
+                    "###############################################################################",
+                    "",
+                    "###############",
+                    "# DB - Server #",
+                    "###############",
+                    "server      = localhost",
+                    "user        = root",
+                    "database    = was",
+                    "port        = 3306",
+                    "password    = s25 "
+                };
+                File.WriteAllLines(strPath, createText);
+            }
+
+            string[] readText = File.ReadAllLines(strPath);
+            foreach (string s in readText)
+            {
+                if (isComment(s))
+                    continue;
+
+                if (!hasValues(s))
+                    continue;
+
+                string strKey = "";
+                string strValue = "";
+
+                if (getValue(s, ref strKey, ref strValue))
+                    objConfig.Add(strKey, strValue);
+            }
+        }
+
+        private string stringGetKeyValue(string strKey)
+        {
+            if (!objConfig.ContainsKey(strKey))
+                return "";
+
+            return objConfig[strKey];
+        }
+
+        private bool isComment(string strLine)
+        {
+            return strLine.Length == 0 ? false : strLine.Trim().Substring(0, 1) == "#";
+        }
+
+        private bool hasValues(string strLine)
+        {
+            return strLine.Length == 0 ? false : strLine.Contains("=");
+        }
+
+        private bool getValue(string strLine, ref string strKey, ref string strValue)
+        {
+            string[] strSplit = strLine.Trim().Split('=');
+
+            if (strSplit.Length != 2)
+                return false;
+
+            strKey = strSplit[0].Trim();
+            strValue = strSplit[1].Trim();
+
+            return true;
+        }
+
     }
 
 }
