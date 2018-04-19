@@ -20,12 +20,15 @@ enum DATABASE_FIELD_COUNT
     GAMEOBJECT_TEMPLATE = 15,
     GAMEOBJECT = 11,
     ITEM_TEMPLATE = 26,
+    ITEM = 6,
 }
 
 namespace WAS_LoginServer
 {
     public partial class frmLoginServer : Form
     {
+        private bool sendSelf = true;
+
         private byte[] m_buffer = new byte[8092];
         private Socket m_ServerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
@@ -37,6 +40,7 @@ namespace WAS_LoginServer
         private List<GameObject_DB> m_listGameObjects;
 
         private List<ItemTemplate_DB> m_listItemTemplates;
+        private List<Item> m_listItems;
 
         private List<PlayerObject> m_listPlayerObject;
         private List<Grid> m_listGrids;
@@ -66,6 +70,7 @@ namespace WAS_LoginServer
             m_listGameObjects = new List<GameObject_DB>();
 
             m_listItemTemplates = new List<ItemTemplate_DB>();
+            m_listItems = new List<Item>();
 
             m_listGrids = new List<Grid>();
 
@@ -237,7 +242,7 @@ namespace WAS_LoginServer
         {
             for (int i = 0; i < m_listPlayerObject.Count; i++)
             {
-                if(m_listPlayerObject[i].m_Socket != s)
+                if(m_listPlayerObject[i].m_Socket != s || sendSelf)
                     SendData(m_listPlayerObject[i].m_Socket, strMessage);
             }
         }
@@ -272,6 +277,9 @@ namespace WAS_LoginServer
                     break;
                 case "0x004":
                     handlePlayerPositionUpdatePackage(s, strData);
+                    break;
+                case "0x006":
+                    handlePlayerEquipmentChange(s, strData);
                     break;
                 case "0x100":
                     handleGameobjectEntryRequest(s, strData);
@@ -390,8 +398,19 @@ namespace WAS_LoginServer
             // |0x002 = login result
             // |0x003 = new player
 
+            // need to get all items
+            List<Item> tmpItemList = m_listItems.FindAll(item => item.getOwner() == ulGUID);
+
+            txbLog.AppendText("Character " + strNickName + " has " + tmpItemList.Count.ToString() + " Items\n");
+
             // everything is fine, add it
-            m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strName));
+            m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strNickName, tmpItemList));
+
+            // find equiped weapon
+            ulong ulEntryWeapon = 0;
+
+            if(m_listItems.Exists(item => (item.getOwner() == ulGUID && item.getState() == 2)))
+                ulEntryWeapon = m_listItems.Find(item => (item.getOwner() == ulGUID && item.getState() == 2)).getEntry();
 
             // tell player who he is
             // build message
@@ -400,7 +419,7 @@ namespace WAS_LoginServer
             SendData(s, strLoginResult);
 
             // now broadcast new player to everybody
-            string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strName;
+            string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strNickName + "/" + ulEntryWeapon.ToString();
             BroadcastToPlayersExcept(s, strBroadcastNewPlayer);
 
             lblConnectedClients.Text = "Connected clients: " + m_listPlayerObject.Count.ToString();
@@ -507,6 +526,7 @@ namespace WAS_LoginServer
                 readTable_gameobject_template(sqlconn);
                 readTable_gameobject(sqlconn);
                 readTable_item_template(sqlconn);
+                readTable_item(sqlconn);
             }
 
             txbLog.AppendText("MySQL Done.\n");
@@ -613,6 +633,46 @@ namespace WAS_LoginServer
             return true;
         }
 
+        public bool readTable_item(MySqlConnection conn)
+        {
+            string sql = "SELECT * FROM item";
+            MySqlCommand cmd = new MySqlCommand(sql, conn);
+            MySqlDataReader rdr = cmd.ExecuteReader();
+
+            while (rdr.Read())
+            {
+                if (rdr.FieldCount == (int)DATABASE_FIELD_COUNT.ITEM)
+                {
+                    ulong[] ulData = new ulong[4];
+
+                    for (int i = 0; i < 4; i++)
+                        ulData[i] = ulong.Parse(rdr.GetValue(i).ToString(), m_objFormatProvider);
+
+                    // check if the entry is valid
+                    if (m_listItemTemplates.Exists(item => item.getEntry() == ulData[1]))
+                    {
+                        m_listItems.Add(new Item(ulData, true));
+                    }
+                    else
+                    {
+                        txbLog.AppendText("invalid entry: " + ulData[1].ToString() + " for item: " + ulData[0] + "\n");
+                    }
+                }
+                else
+                {
+                    string row = "";
+                    for (int i = 0; i < rdr.FieldCount; i++)
+                        row += rdr.GetValue(i).ToString() + ", ";
+                    txbLog.AppendText("Could not load gameobject: " + row + "\n");
+                }
+            }
+            txbLog.AppendText("Item loaded: " + m_listItems.Count.ToString() + " Entries.\n");
+
+            rdr.Close();
+
+            return true;
+        }
+
         public bool readTable_item_template(MySqlConnection conn)
         {
             string sql = "SELECT * FROM item_template";
@@ -693,8 +753,28 @@ namespace WAS_LoginServer
             return true;
         }
 
+        public void handlePlayerEquipmentChange(Socket s, string strData)
+        {
+            string[] splittedData = strData.Split('/');
+
+            txbLog.AppendText("received handlePlayerEquipmentChange\n");
+            txbLog.AppendText(strData + "\n");
+
+            if (!m_listPlayerObject.Exists(x => x.m_uiGUID == ulong.Parse(splittedData[1], m_objFormatProvider)))
+                return;
+
+            PlayerObject objTempPlayer = m_listPlayerObject.Find(x => x.m_uiGUID == ulong.Parse(splittedData[1], m_objFormatProvider));
+
+            objTempPlayer.setEquipment(ulong.Parse(splittedData[2], m_objFormatProvider), ulong.Parse(splittedData[3], m_objFormatProvider));
+
+            string strBroadcastPlayerEquipment = "|0x007/" + objTempPlayer.m_uiGUID.ToString() + "/" + ulong.Parse(splittedData[3], m_objFormatProvider) + "/" + objTempPlayer.getEquipment(ulong.Parse(splittedData[3], m_objFormatProvider)).ToString();
+            BroadcastToPlayersExcept(s, strBroadcastPlayerEquipment);
+        }
+
         public void handlePlayerPositionUpdatePackage(Socket s, string strData)
         {
+            //txbLog.AppendText("handlePlayerPositionUpdatePackage\n");
+
             string[] splittedData = strData.Split('/');
             // 0 = 0x004 (Player Position Update)       splittedData[0]
             // 1 = GUID                                 splittedData[1]
@@ -747,7 +827,7 @@ namespace WAS_LoginServer
                 return;
             }
 
-            //objTempPlayer.updatePlayerBodyTransform(usType, posX, posY, posZ, rotX, rotY, rotZ, rotW);
+            objTempPlayer.updatePlayerBodyTransform(usType, posX, posY, posZ, rotX, rotY, rotZ, rotW);
 
             if (usType == 0)
             {
@@ -786,6 +866,8 @@ namespace WAS_LoginServer
                 }
             }
 
+            //txbLog.AppendText("handlePlayerPositionUpdatePackage\n");
+
             BroadcastUpdatePlayerBodyTransform(ulong.Parse(splittedData[1], m_objFormatProvider), usType);
         }
 
@@ -793,9 +875,11 @@ namespace WAS_LoginServer
         {
             string strData = "|0x005" + "/" + (m_listPlayerObject.Find(x => x.m_uiGUID == ulGUID)).getPlayerBodyObjectSerialized(usType);
 
+            //txbLog.AppendText("Sending: " + strData + "\n");
+
             foreach(PlayerObject objPlayer in m_listPlayerObject)
             {
-                if(objPlayer.m_uiGUID != ulGUID)
+                if(objPlayer.m_uiGUID != ulGUID || sendSelf)
                     SendData(objPlayer.m_Socket, strData);
             }
         }
@@ -803,6 +887,126 @@ namespace WAS_LoginServer
         private void removePlayerObjectBySocket (Socket s)
         {
             m_listPlayerObject.RemoveAll(item => item.m_Socket == s);
+        }
+    }
+    public class PlayerObject
+    {
+        public UInt64 m_uiGUID { get; set; }
+        public Socket m_Socket { get; set; }
+        public string m_strName { get; set; }
+        public string m_strGridID { get; set; }
+        private List<PlayerBodyObject> playerObjects { get; set; }
+        private CultureInfo m_objFormatProvider;
+
+        private ulong m_ulEquipedWeapon = 0;
+
+        private List<ulong> m_listItemGUIDs;
+
+        public ulong getEquipment(ulong ulndex)
+        {
+            return m_ulEquipedWeapon;
+        }
+
+        public void setEquipment(ulong ulIndex, ulong ulEntry)
+        {
+            if (m_ulEquipedWeapon != 0)
+                m_ulEquipedWeapon = 0;
+            else
+                m_ulEquipedWeapon = 5;
+        }
+
+        // returns a string as follows:
+        // guid/name
+        public string getPlayerObjectSerialized()
+        {
+            string strData = "";
+
+            strData = m_uiGUID.ToString() + "/" + m_strName + "/" + m_ulEquipedWeapon.ToString();
+
+            return strData;
+        }
+
+        // get player object serialized
+        // returns a string as following:
+        // guid/type/state/posx/posy/posz/rotx/roty/rotz/rotw
+        public string getPlayerBodyObjectSerialized(UInt16 uiType)
+        {
+            // first, serialize the data
+            string strData = (playerObjects.Find(x => x.m_uiType == uiType)).serializePlayerBodyObject(m_objFormatProvider);
+
+            // then add the guid
+            strData = m_uiGUID.ToString() + "/" + strData;
+
+            return strData;
+        }
+
+        public void updatePlayerBodyTransform(UInt16 uiType, float newPosX, float newPosY, float newPosZ, float newRotX, float newRotY, float newRotZ, float newRotW)
+        {
+            (playerObjects.Find(x => x.m_uiType == uiType)).setTransform(newPosX, newPosY, newPosZ, newRotX, newRotY, newRotZ, newRotW);
+        }
+
+        public void updatePlayerBodyRotation(UInt16 uiType, float newRotX, float newRotY, float newRotZ, float newRotW)
+        {
+            (playerObjects.Find(x => x.m_uiType == uiType)).setRotation(newRotX, newRotY, newRotZ, newRotW);
+        }
+
+        public void updatePlayerBodyPosition(UInt16 uiType, float newPosX, float newPosY, float newPosZ)
+        {
+            (playerObjects.Find(x => x.m_uiType == uiType)).setPosition(newPosX, newPosY, newPosZ);
+        }
+
+        // get player object by type
+        public PlayerBodyObject getPlayerBodyObject(UInt16 uiType)
+        {
+            return (playerObjects.Find(x => x.m_uiType == uiType));
+        }
+
+        // update state by type
+        public void updatePlayerBody(UInt16 uiType, UInt16 uiNewState)
+        {
+            (playerObjects.Find(x => x.m_uiType == uiType)).m_uiState = uiNewState;
+        }
+
+        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName)
+        {
+            this.m_uiGUID = uiGUID;
+            this.m_Socket = Socket;
+            this.m_Socket.NoDelay = true;
+            this.m_strName = strName;
+
+            m_objFormatProvider = CultureInfo.CreateSpecificCulture("en-US");
+
+            playerObjects = new List<PlayerBodyObject>();
+            m_listItemGUIDs = new List<ulong>();
+
+            // Create members, state 0 = inactive
+            playerObjects.Add(new PlayerBodyObject(0, 0));
+            playerObjects.Add(new PlayerBodyObject(1, 0));
+            playerObjects.Add(new PlayerBodyObject(2, 0));
+        }
+
+        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName, List<Item> lItems)
+        {
+            this.m_uiGUID = uiGUID;
+            this.m_Socket = Socket;
+            this.m_Socket.NoDelay = true;
+            this.m_strName = strName;
+
+            m_objFormatProvider = CultureInfo.CreateSpecificCulture("en-US");
+
+            playerObjects = new List<PlayerBodyObject>();
+            m_listItemGUIDs = new List<ulong>();
+
+            foreach (Item item in lItems)
+                m_listItemGUIDs.Add(item.getGUID());
+
+            // Create members, state 0 = inactive
+            playerObjects.Add(new PlayerBodyObject(0, 0));
+            playerObjects.Add(new PlayerBodyObject(1, 0));
+            playerObjects.Add(new PlayerBodyObject(2, 0));
+
+            if (lItems.Exists(item => (item.getState() == 2)))
+                m_ulEquipedWeapon = lItems.Find(item => (item.getState() == 2)).getEntry();
         }
     }
 
@@ -1108,85 +1312,6 @@ namespace WAS_LoginServer
             m_strGridID = gridX.ToString() + "|" + gridY.ToString();
 
             // check if grid exists
-        }
-    }
-
-    public class PlayerObject
-    {
-        public UInt64 m_uiGUID { get; set; }
-        public Socket m_Socket { get; set; }
-        public string m_strName { get; set; }
-        public string m_strGridID { get; set; }
-        private List<PlayerBodyObject> playerObjects { get; set; }
-        private CultureInfo m_objFormatProvider;
-
-        // returns a string as follows:
-        // guid/name
-        public string getPlayerObjectSerialized()
-        {
-            string strData = "";
-
-            strData = m_uiGUID.ToString() + "/" + m_strName;
-
-            return strData;
-        }
-
-        // get player object serialized
-        // returns a string as following:
-        // guid/type/state/posx/posy/posz/rotx/roty/rotz/rotw
-        public string getPlayerBodyObjectSerialized(UInt16 uiType)
-        {
-            // first, serialize the data
-            string strData = (playerObjects.Find(x => x.m_uiType == uiType)).serializePlayerBodyObject(m_objFormatProvider);
-
-            // then add the guid
-            strData = m_uiGUID.ToString() + "/" + strData;
-
-            return strData;
-        }
-
-        public void updatePlayerBodyTransform(UInt16 uiType, float newPosX, float newPosY, float newPosZ, float newRotX, float newRotY, float newRotZ, float newRotW)
-        {
-            (playerObjects.Find(x => x.m_uiType == uiType)).setTransform(newPosX, newPosY, newPosZ, newRotX, newRotY, newRotZ, newRotW);
-        }
-
-        public void updatePlayerBodyRotation(UInt16 uiType, float newRotX, float newRotY, float newRotZ, float newRotW)
-        {
-            (playerObjects.Find(x => x.m_uiType == uiType)).setRotation(newRotX, newRotY, newRotZ, newRotW);
-        }
-
-        public void updatePlayerBodyPosition(UInt16 uiType, float newPosX, float newPosY, float newPosZ)
-        {
-            (playerObjects.Find(x => x.m_uiType == uiType)).setPosition(newPosX, newPosY, newPosZ);
-        }
-
-        // get player object by type
-        public PlayerBodyObject getPlayerBodyObject(UInt16 uiType)
-        {
-            return (playerObjects.Find(x => x.m_uiType == uiType));
-        }
-
-        // update state by type
-        public void updatePlayerBody(UInt16 uiType, UInt16 uiNewState)
-        {
-            (playerObjects.Find(x => x.m_uiType == uiType)).m_uiState = uiNewState;
-        }
-
-        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName)
-        {
-            this.m_uiGUID = uiGUID;
-            this.m_Socket = Socket;
-            this.m_Socket.NoDelay = true;
-            this.m_strName = strName;
-
-            m_objFormatProvider = CultureInfo.CreateSpecificCulture("en-US");
-
-            playerObjects = new List<PlayerBodyObject>();
-
-            // Create members, state 0 = inactive
-            playerObjects.Add(new PlayerBodyObject(0, 0));
-            playerObjects.Add(new PlayerBodyObject(1, 0));
-            playerObjects.Add(new PlayerBodyObject(2, 0));
         }
     }
 
@@ -1549,7 +1674,7 @@ namespace WAS_LoginServer
         }
     }
 
-    class Configuration
+    public class Configuration
     {
         private Dictionary<string, string> objConfig = new Dictionary<string, string>();
 
@@ -1642,6 +1767,102 @@ namespace WAS_LoginServer
             strValue = strSplit[1].Trim();
 
             return true;
+        }
+
+    }
+
+    public class Item
+    {
+        // guid
+        // entry
+        // owner
+        // state
+        ulong[] ulData = new ulong[4];
+
+        // indicated if an insert is needed
+        bool isSavedInDB;
+
+        // indicates if an update is needed
+        bool isUpToDateInDB;
+
+        public ulong getGUID() { return ulData[0]; }
+        public void setGUID(ulong ulNewGUID) { ulData[0] = ulNewGUID; isUpToDateInDB = false; }
+
+        public ulong getEntry() { return ulData[1]; }
+
+        public ulong getOwner() { return ulData[2]; }
+        public void setOwner(ulong ulNewOwner) { ulData[2] = ulNewOwner; isUpToDateInDB = false; }
+
+        public ulong getState() { return ulData[3]; }
+        public void setState(ulong ulNewState)
+        {
+            if (ulNewState != ulData[3])
+                isUpToDateInDB = false;
+
+            ulData[3] = ulNewState;
+        }
+
+        // from DB or Trade
+        public Item(ulong[] ulData, bool fromDB)
+        {
+            for (int i = 0; i < 4; i++)
+                this.ulData[i] = ulData[i];
+
+            if(fromDB)
+            {
+                isSavedInDB = true;
+                isUpToDateInDB = true;
+            }
+            else
+            {
+                isSavedInDB = false;
+                isUpToDateInDB = false;
+            }
+        }
+
+        // from DB or Trade
+        public Item(ulong ulGUID, ulong ulEntry, ulong ulOwner, ulong ulState, bool fromDB)
+        {
+            ulData[0] = ulGUID;
+            ulData[1] = ulEntry;
+            ulData[2] = ulOwner;
+            ulData[3] = ulState;
+
+            if (fromDB)
+            {
+                isSavedInDB = true;
+                isUpToDateInDB = true;
+            }
+            else
+            {
+                isSavedInDB = false;
+                isUpToDateInDB = false;
+            }
+
+        }
+
+        // Lootet item / received item
+        public Item(ulong ulEntry, ulong ulOwner, ulong ulState)
+        {
+            ulData[0] = 0;
+            ulData[1] = ulEntry;
+            ulData[2] = ulOwner;
+            ulData[3] = ulState;
+
+            isSavedInDB = false;
+            isUpToDateInDB = false;
+        }
+
+        // Dropped Item
+        public Item(ulong ulEntry, ulong ulState)
+        {
+            ulData[0] = 0;
+            ulData[1] = ulEntry;
+            ulData[2] = 0;
+            ulData[3] = ulState;
+
+            isSavedInDB = false;
+            isUpToDateInDB = false;
         }
 
     }
