@@ -19,8 +19,34 @@ enum DATABASE_FIELD_COUNT
 {
     GAMEOBJECT_TEMPLATE = 15,
     GAMEOBJECT = 11,
-    ITEM_TEMPLATE = 26,
+    ITEM_TEMPLATE = 27,
     ITEM = 6,
+}
+
+enum ITEM_CLASSES : ulong
+{
+    INVALID = 0,
+    GENERIC = 1,
+    WEAPON = 2,
+    HELMET = 3,
+    GLOVES = 4,
+    BODY = 5,
+    SHOULDER = 6,
+    CHARM = 7,
+    POTION = 8,
+}
+
+enum ITEM_SUBCLASSES : ulong
+{
+    // Weapon 0-99
+    SHIELD_SWORD = 0,
+    SWORD_SWORD = 1,
+    SPEAR = 2,
+    BOW = 3,
+    HANDGUN = 4,
+    SWORD_2H = 5,
+    STAFF_2H = 6,
+    WAND_TOME = 7,
 }
 
 namespace WAS_LoginServer
@@ -45,7 +71,7 @@ namespace WAS_LoginServer
         private List<PlayerObject> m_listPlayerObject;
         private List<Grid> m_listGrids;
 
-        private MySqlConnection sqlconn; //= new MySqlConnection("server=localhost;user=root;database=was;port=3306;password=s25;");
+        private MySqlConnection sqlconn;
 
         private bool hasDBConnection = false;
 
@@ -234,7 +260,7 @@ namespace WAS_LoginServer
             for (int i = 0; i < m_listPlayerObject.Count; i++)
             {
                 if (m_listPlayerObject[i].m_Socket != s)
-                    SendData(s, "|0x003/" + m_listPlayerObject[i].getPlayerObjectSerialized());
+                    SendData(s, "|0x003/" + m_listPlayerObject[i].getPlayerObjectSerialized(m_listItems));
             }
         }
 
@@ -284,13 +310,48 @@ namespace WAS_LoginServer
                 case "0x100":
                     handleGameobjectEntryRequest(s, strData);
                     break;
+                case "0x200":
+                    handleItemTemplateRequest(s, strData);
+                    break;
+            }
+        }
+
+        private void handleItemTemplateRequest(Socket s, string strData)
+        {
+            txbLog.AppendText("handleItemTemplateRequest(s, " + strData + ")\n");
+
+            string[] splittedData = strData.Split('/');
+            // 0 = 0x200
+            // 1 = Entry
+
+            ulong ulEntry = 0;
+
+            try
+            {
+                ulEntry = ulong.Parse(splittedData[1], m_objFormatProvider);
+
+                txbLog.AppendText("handleItemTemplateRequest => Entry:" + ulEntry.ToString() + ")\n");
+
+                ItemTemplate_DB objTempItemTemplate = m_listItemTemplates.Find(x => x.getEntry() == ulEntry);
+
+                txbLog.AppendText("handleItemTemplateRequest => Name:" + objTempItemTemplate.getItemTemplateName() + ")\n");
+
+                string strDataToSend = "|0x201/" + objTempItemTemplate.getSerializedData(m_objFormatProvider);
+
+                SendData(s, strDataToSend);
+
+                //txbLog.AppendText("handleItemTemplateRequest sending: " + strDataToSend + "\n");
+            }
+            catch(Exception ex)
+            {
+                txbLog.AppendText("ERROR: handleItemTemplateRequest Message: " + ex.Message + "\n");
             }
         }
 
         private void handleGameobjectEntryRequest(Socket s, string strData)
         {
             string[] splittedData = strData.Split('/');
-            // 0 = 0x010
+            // 0 = 0x100
             // 1 = player GUID
             // 2 = Gameobject Entry
 
@@ -403,6 +464,44 @@ namespace WAS_LoginServer
 
             txbLog.AppendText("Character " + strNickName + " has " + tmpItemList.Count.ToString() + " Items\n");
 
+            // Next step: check if items are faulty
+            // For now thats just having 2 items of same type equipped
+            // there are 7 slots
+            bool[] hasItem = new bool[7];
+            foreach (Item equippedItem in tmpItemList)
+            {
+                // 2 = equipped
+                if(equippedItem.getState() == 2)
+                {
+                    // now get the template by entry
+                    try
+                    {
+                        ItemTemplate_DB tmpTemplate = m_listItemTemplates.Find(item => item.getEntry() == equippedItem.getEntry());
+
+                        // so it is an equipped item, check if there was an item for slot
+                        // slot is determined by item class - 2
+                        if(hasItem[tmpTemplate.getItemTemplateClass(0) - 2])
+                        {
+                            txbLog.AppendText("Player has two items in slot! Unequipping last!\n");
+                            // change item state
+                            // 1 = inventory
+                            // update will be done later
+
+                            m_listItems.Find(item => item.getGUID() == equippedItem.getGUID()).setState(1);
+                        }
+                        else
+                        {
+                            hasItem[tmpTemplate.getItemTemplateClass(0) - 2] = true;
+                        }
+                    }
+                    catch
+                    {
+                        txbLog.AppendText("item '" + equippedItem.getEntry().ToString() + "' has no valid template!\n");
+                    }
+                }
+
+            }
+
             // everything is fine, add it
             m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strNickName, tmpItemList));
 
@@ -419,7 +518,8 @@ namespace WAS_LoginServer
             SendData(s, strLoginResult);
 
             // now broadcast new player to everybody
-            string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strNickName + "/" + ulEntryWeapon.ToString();
+            //string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strNickName + "/" + ulEntryWeapon.ToString();
+            string strBroadcastNewPlayer = "|0x003/" + (m_listPlayerObject.Find(item => (item.m_uiGUID == ulGUID))).getPlayerObjectSerialized(m_listItems);
             BroadcastToPlayersExcept(s, strBroadcastNewPlayer);
 
             lblConnectedClients.Text = "Connected clients: " + m_listPlayerObject.Count.ToString();
@@ -687,13 +787,14 @@ namespace WAS_LoginServer
                     ulong ulClass =         ulong.Parse(rdr.GetValue(1).ToString(), m_objFormatProvider);
                     ulong ulSubClass =      ulong.Parse(rdr.GetValue(2).ToString(), m_objFormatProvider);
                     string strName =        rdr.GetValue(3).ToString();
-                    ulong ulDisplayId =     ulong.Parse(rdr.GetValue(4).ToString(), m_objFormatProvider);
-                    ulong ulQuality =       ulong.Parse(rdr.GetValue(5).ToString(), m_objFormatProvider);
-                    ulong ulPrice =         ulong.Parse(rdr.GetValue(6).ToString(), m_objFormatProvider);
-                    ulong ulItemLevel =     ulong.Parse(rdr.GetValue(7).ToString(), m_objFormatProvider);
-                    ulong ulMaxUses =       ulong.Parse(rdr.GetValue(8).ToString(), m_objFormatProvider);
+                    ulong ulDisplayId1 =    ulong.Parse(rdr.GetValue(4).ToString(), m_objFormatProvider);
+                    ulong ulDisplayId2 =    ulong.Parse(rdr.GetValue(5).ToString(), m_objFormatProvider);
+                    ulong ulQuality =       ulong.Parse(rdr.GetValue(6).ToString(), m_objFormatProvider);
+                    ulong ulPrice =         ulong.Parse(rdr.GetValue(7).ToString(), m_objFormatProvider);
+                    ulong ulItemLevel =     ulong.Parse(rdr.GetValue(8).ToString(), m_objFormatProvider);
+                    ulong ulMaxUses =       ulong.Parse(rdr.GetValue(9).ToString(), m_objFormatProvider);
 
-                    int iOffset = 9;
+                    int iOffset = 10;
 
                     ulong[] ulAllowances = new ulong[2];
                     for(ulong i = 0; i < 2; i++)
@@ -737,7 +838,7 @@ namespace WAS_LoginServer
                         iOffset++;
                     }
 
-                    m_listItemTemplates.Add(new ItemTemplate_DB(ulEntry, ulClass, ulSubClass, strName, ulDisplayId, ulQuality, ulPrice, ulItemLevel, ulMaxUses, ulAllowances, ulRequirements, ulArmor, ulDamage, ulStatTypes, ulStatValues));
+                    m_listItemTemplates.Add(new ItemTemplate_DB(ulEntry, ulClass, ulSubClass, strName, ulDisplayId1, ulDisplayId2, ulQuality, ulPrice, ulItemLevel, ulMaxUses, ulAllowances, ulRequirements, ulArmor, ulDamage, ulStatTypes, ulStatValues));
                 }
                 else
                 {
@@ -916,12 +1017,32 @@ namespace WAS_LoginServer
         }
 
         // returns a string as follows:
-        // guid/name
-        public string getPlayerObjectSerialized()
+        // guid/name/Equipment1/Equipment2/Equipment3/Equipment4/Equipment5/Equipment6/Equipment7
+        //WEAPON = 2,
+        //HELMET = 3,
+        //GLOVES = 4,
+        //BODY = 5,
+        //SHOULDER = 6,
+        //CHARM = 7,
+        //POTION = 8,
+        public string getPlayerObjectSerialized(List<Item> m_listItems)
         {
             string strData = "";
+            string strEquipment = "";
 
-            strData = m_uiGUID.ToString() + "/" + m_strName + "/" + m_ulEquipedWeapon.ToString();
+            // gives every item that is owned by the current player and equipped
+            // maybe it's not import what type those items are, it's only important to get the entrys
+            if (m_listItems.Exists(item => (item.getOwner() == m_uiGUID && item.getState() == 2)))
+            {
+                List<Item> tmpItemList = m_listItems.FindAll(item => (item.getOwner() == m_uiGUID && item.getState() == 2));
+
+                foreach(Item tmpItem in tmpItemList)
+                {
+                    strEquipment += "/" + tmpItem.getEntry();
+                }
+            }
+
+            strData = m_uiGUID.ToString() + "/" + m_strName + strEquipment;
 
             return strData;
         }
@@ -1007,6 +1128,14 @@ namespace WAS_LoginServer
 
             if (lItems.Exists(item => (item.getState() == 2)))
                 m_ulEquipedWeapon = lItems.Find(item => (item.getState() == 2)).getEntry();
+        }
+
+        ~PlayerObject()
+        {
+            playerObjects.Clear();
+            m_Socket.Close();
+            m_Socket = null;
+            m_objFormatProvider = null;
         }
     }
 
@@ -1318,10 +1447,14 @@ namespace WAS_LoginServer
     public class ItemTemplate_DB
     {
         ulong ulEntry;
-        ulong ulClass;
-        ulong ulSubClass;
+
+        // class
+        // subclass
+        ulong[] ulClass = new ulong[2];
         string strName;
-        ulong ulDisplayId;
+        // display ID mainhand
+        // display ID offhand
+        ulong[] ulDisplayIds = new ulong[2];
         ulong ulQuality;
         ulong ulPrice;
         ulong ulItemLevel;
@@ -1358,13 +1491,7 @@ namespace WAS_LoginServer
 
         public ulong getEntry() { return ulEntry; }
 
-        public ulong getItemTemplateClass() { return ulClass; }
-
-        public ulong getItemTemplateSubClass() { return ulSubClass; }
-
         public string getItemTemplateName() { return strName; }
-
-        public ulong getItemTemplateDisplayId() { return ulDisplayId; }
 
         public ulong getItemTemplateQuality() { return ulQuality; }
 
@@ -1373,6 +1500,38 @@ namespace WAS_LoginServer
         public ulong getItemTemplateLevel() { return ulItemLevel; }
 
         public ulong getItemTemplateMaxUses() { return ulMaxUses; }
+
+        // Class
+
+        public ulong getItemTemplateClass(ulong uiIndex)
+        {
+            if (uiIndex > 1)
+                return 0;
+            else
+                return ulClass[uiIndex];
+        }
+
+        public void getItemTemplateClasses(ref ulong ulItemClass, ref ulong ulItemSubClass)
+        {
+            ulItemClass = ulClass[0];
+            ulItemSubClass = ulClass[1];
+        }
+
+        // Display
+
+        public ulong getItemTemplateDisplayID(ulong uiIndex)
+        {
+            if (uiIndex > 1)
+                return 0;
+            else
+                return ulDisplayIds[uiIndex];
+        }
+
+        public void getItemTemplateulDisplayIds(ref ulong ulItemDisplayMain, ref ulong ulItemDisplayOff)
+        {
+            ulItemDisplayMain = ulDisplayIds[0];
+            ulItemDisplayOff = ulDisplayIds[1];
+        }
 
         // Allowance
 
@@ -1549,14 +1708,15 @@ namespace WAS_LoginServer
 
         // Constructor
 
-        public ItemTemplate_DB(ulong ulEntry,ulong ulClass, ulong ulSubClass, string strName, ulong ulDisplayId, ulong ulQuality, ulong ulPrice, ulong ulItemLevel, ulong ulMaxUses,
+        public ItemTemplate_DB(ulong ulEntry,ulong ulClass, ulong ulSubClass, string strName, ulong ulDisplayIdMain, ulong DisplayIdOff, ulong ulQuality, ulong ulPrice, ulong ulItemLevel, ulong ulMaxUses,
                                 ulong[] ulAllowances, ulong[] ulRequirements, ulong[] ulArmor, ulong[] ulDamage, ulong[] ulStatTypes, ulong[] ulStatValues)
         {
             this.ulEntry = ulEntry;
-            this.ulClass = ulClass;
-            this.ulSubClass = ulSubClass;
+            this.ulClass[0] = ulClass;
+            this.ulClass[1] = ulSubClass;
             this.strName = strName;
-            this.ulDisplayId = ulDisplayId;
+            this.ulDisplayIds[0] = ulDisplayIdMain;
+            this.ulDisplayIds[1] = DisplayIdOff;
             this.ulQuality = ulQuality;
             this.ulPrice = ulPrice;
             this.ulItemLevel = ulItemLevel;
@@ -1587,49 +1747,50 @@ namespace WAS_LoginServer
         // 
         public string getSerializedData(CultureInfo objFormatProvider)
         {
-            string[] strData = new string[26];
+            string[] strData = new string[27];
 
             strData[0] = ulEntry.ToString(objFormatProvider);
-            strData[1] = ulClass.ToString(objFormatProvider);
-            strData[2] = ulSubClass.ToString(objFormatProvider);
+            strData[1] = ulClass[0].ToString(objFormatProvider);
+            strData[2] = ulClass[1].ToString(objFormatProvider);
             strData[3] = strName;
-            strData[4] = ulDisplayId.ToString(objFormatProvider);
-            strData[5] = ulQuality.ToString(objFormatProvider);
-            strData[6] = ulPrice.ToString(objFormatProvider);
-            strData[7] = ulItemLevel.ToString(objFormatProvider);
-            strData[8] = ulMaxUses.ToString(objFormatProvider);
-
-            strData[9] = ulAllowances[0].ToString(objFormatProvider);
-            strData[10] = ulAllowances[1].ToString(objFormatProvider);
-
-            strData[11] = ulRequirements[0].ToString(objFormatProvider);
-            strData[12] = ulRequirements[1].ToString(objFormatProvider);
-            strData[13] = ulRequirements[3].ToString(objFormatProvider);
-
-            strData[14] = ulArmor[0].ToString(objFormatProvider);
-            strData[15] = ulArmor[1].ToString(objFormatProvider);
-
-            strData[16] = ulDamage[0].ToString(objFormatProvider);
-            strData[17] = ulDamage[1].ToString(objFormatProvider);
-
-            strData[18] = ulStatTypes[0].ToString(objFormatProvider);
-            strData[19] = ulStatTypes[1].ToString(objFormatProvider);
-            strData[20] = ulStatTypes[2].ToString(objFormatProvider);
-            strData[21] = ulStatTypes[3].ToString(objFormatProvider);
-
-            strData[22] = ulStatValues[0].ToString(objFormatProvider);
-            strData[23] = ulStatValues[1].ToString(objFormatProvider);
-            strData[24] = ulStatValues[2].ToString(objFormatProvider);
-            strData[25] = ulStatValues[3].ToString(objFormatProvider);
+            strData[4] = ulDisplayIds[0].ToString(objFormatProvider);
+            strData[5] = ulDisplayIds[1].ToString(objFormatProvider);
+            strData[6] = ulQuality.ToString(objFormatProvider);
+            strData[7] = ulPrice.ToString(objFormatProvider);
+            strData[8] = ulItemLevel.ToString(objFormatProvider);
+            strData[9] = ulMaxUses.ToString(objFormatProvider);
+            
+            strData[10] = ulAllowances[0].ToString(objFormatProvider);
+            strData[11] = ulAllowances[1].ToString(objFormatProvider);
+            
+            strData[12] = ulRequirements[0].ToString(objFormatProvider);
+            strData[13] = ulRequirements[1].ToString(objFormatProvider);
+            strData[14] = ulRequirements[2].ToString(objFormatProvider);
+            
+            strData[15] = ulArmor[0].ToString(objFormatProvider);
+            strData[16] = ulArmor[1].ToString(objFormatProvider);
+            
+            strData[17] = ulDamage[0].ToString(objFormatProvider);
+            strData[18] = ulDamage[1].ToString(objFormatProvider);
+            
+            strData[19] = ulStatTypes[0].ToString(objFormatProvider);
+            strData[20] = ulStatTypes[1].ToString(objFormatProvider);
+            strData[21] = ulStatTypes[2].ToString(objFormatProvider);
+            strData[22] = ulStatTypes[3].ToString(objFormatProvider);
+            
+            strData[23] = ulStatValues[0].ToString(objFormatProvider);
+            strData[24] = ulStatValues[1].ToString(objFormatProvider);
+            strData[25] = ulStatValues[2].ToString(objFormatProvider);
+            strData[26] = ulStatValues[3].ToString(objFormatProvider);
 
             string strReturnString = "";
 
-            for(ulong i = 0; i < 26; i++)
+            for(ulong i = 0; i < 27; i++)
             {
-                strReturnString += strData[i];
-
-                if (i < 25)
+                if (strReturnString != "")
                     strReturnString += "/";
+
+                strReturnString += strData[i];  
             }
 
             return strReturnString;
