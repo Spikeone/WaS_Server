@@ -260,7 +260,7 @@ namespace WAS_LoginServer
             for (int i = 0; i < m_listPlayerObject.Count; i++)
             {
                 if (m_listPlayerObject[i].m_Socket != s)
-                    SendData(s, "|0x003/" + m_listPlayerObject[i].getPlayerObjectSerialized(m_listItems));
+                    SendData(s, "|0x003/" + m_listPlayerObject[i].getPlayerObjectSerialized(m_listItems, m_listItemTemplates));
             }
         }
 
@@ -519,7 +519,7 @@ namespace WAS_LoginServer
 
             // now broadcast new player to everybody
             //string strBroadcastNewPlayer = "|0x003/" + ulGUID.ToString() + "/" + strNickName + "/" + ulEntryWeapon.ToString();
-            string strBroadcastNewPlayer = "|0x003/" + (m_listPlayerObject.Find(item => (item.m_uiGUID == ulGUID))).getPlayerObjectSerialized(m_listItems);
+            string strBroadcastNewPlayer = "|0x003/" + (m_listPlayerObject.Find(item => (item.m_uiGUID == ulGUID))).getPlayerObjectSerialized(m_listItems, m_listItemTemplates);
             BroadcastToPlayersExcept(s, strBroadcastNewPlayer);
 
             lblConnectedClients.Text = "Connected clients: " + m_listPlayerObject.Count.ToString();
@@ -1017,7 +1017,7 @@ namespace WAS_LoginServer
         }
 
         // returns a string as follows:
-        // guid/name/Equipment1/Equipment2/Equipment3/Equipment4/Equipment5/Equipment6/Equipment7
+        // guid/name/WEAPON/HELMET/GLOVES/BODY/SHOULDER/CHARM/POTION
         //WEAPON = 2,
         //HELMET = 3,
         //GLOVES = 4,
@@ -1025,22 +1025,47 @@ namespace WAS_LoginServer
         //SHOULDER = 6,
         //CHARM = 7,
         //POTION = 8,
-        public string getPlayerObjectSerialized(List<Item> m_listItems)
+        public string getPlayerObjectSerialized(List<Item> m_listItems, List<ItemTemplate_DB> m_listItemTemplates)
         {
             string strData = "";
             string strEquipment = "";
 
+            ulong[] ulEquipmentEntrys = { 0, 0, 0, 0, 0, 0, 0 };
+
             // gives every item that is owned by the current player and equipped
             // maybe it's not import what type those items are, it's only important to get the entrys
-            if (m_listItems.Exists(item => (item.getOwner() == m_uiGUID && item.getState() == 2)))
-            {
-                List<Item> tmpItemList = m_listItems.FindAll(item => (item.getOwner() == m_uiGUID && item.getState() == 2));
+            //if (m_listItems.Exists(item => (item.getOwner() == m_uiGUID && item.getState() == 2)))
+            //{
+            //    List<Item> tmpItemList = m_listItems.FindAll(item => (item.getOwner() == m_uiGUID && item.getState() == 2));
+            //
+            //    foreach(Item tmpItem in tmpItemList)
+            //    {
+            //        strEquipment += "/" + tmpItem.getEntry();
+            //    }
+            //}
 
-                foreach(Item tmpItem in tmpItemList)
+            // well it is important to know where those items should be shown
+            foreach(ulong ulItemGUID in m_listItemGUIDs)
+            {
+                Item objItem = m_listItems.Find(item => (item.getGUID() == ulItemGUID));
+
+                // only equipped items
+                if(objItem.getState() == 2)
                 {
-                    strEquipment += "/" + tmpItem.getEntry();
+                    ItemTemplate_DB objItemTemplate = m_listItemTemplates.Find(template => (template.getEntry() == objItem.getEntry()));
+
+                    // Type 2 - 8 
+                    if(objItemTemplate.getItemTemplateClass(0) > 1 && objItemTemplate.getItemTemplateClass(0) < 9)
+                    {
+                        ulEquipmentEntrys[objItemTemplate.getItemTemplateClass(0) - 2] = objItem.getEntry();
+                    }
                 }
             }
+
+            // and now serialize it
+            for (int i = 0; i < 7; i++)
+                strEquipment += "/" + ulEquipmentEntrys[i];
+
 
             strData = m_uiGUID.ToString() + "/" + m_strName + strEquipment;
 
