@@ -22,6 +22,7 @@ enum DATABASE_FIELD_COUNT
     GAMEOBJECT = 11,
     ITEM_TEMPLATE = 27,
     ITEM = 6,
+    POINTSOFINTEREST = 11,
 }
 
 enum ITEM_CLASSES : ulong
@@ -74,6 +75,8 @@ namespace WAS_LoginServer
         private List<PlayerObject> m_listPlayerObject;
         private List<Grid> m_listGrids;
 
+        private List<PointOfInterest_DB> m_listPointOfInterests;
+
         private MySqlConnection sqlconn;
 
         private bool hasDBConnection = false;
@@ -104,6 +107,8 @@ namespace WAS_LoginServer
             m_listGrids = new List<Grid>();
 
             m_objGuidHandler = new GameObjectGUIDHandler();
+
+            m_listPointOfInterests = new List<PointOfInterest_DB>();
 
             try
             {
@@ -630,6 +635,7 @@ namespace WAS_LoginServer
                 readTable_gameobject(sqlconn);
                 readTable_item_template(sqlconn);
                 readTable_item(sqlconn);
+                readTable_pointsofinterest(sqlconn);
             }
 
             txbLog.AppendText("MySQL Done.\n");
@@ -673,7 +679,56 @@ namespace WAS_LoginServer
                 }
             }
             rdr.Close();
+
             txbLog.AppendText("GameobjectTemplate loaded: " + m_listGameObjectTemplates.Count.ToString() + " Entries.\n");
+
+            return true;
+        }
+
+        public bool readTable_pointsofinterest(MySqlConnection conn)
+        {
+            string sql = "SELECT * FROM PointsOfInterest";
+            MySqlCommand cmd = new MySqlCommand(sql, conn);
+            MySqlDataReader rdr = cmd.ExecuteReader();
+
+            while (rdr.Read())
+            {
+                if (rdr.FieldCount == (int)DATABASE_FIELD_COUNT.POINTSOFINTEREST)
+                {
+                    ulong ulEntry = ulong.Parse(rdr.GetValue(0).ToString());
+                    ulong ulGroup = ulong.Parse(rdr.GetValue(1).ToString());
+                    ulong ulType = ulong.Parse(rdr.GetValue(2).ToString());
+                    ulong ulMap = ulong.Parse(rdr.GetValue(3).ToString());
+
+                    float fPosX = float.Parse(rdr.GetValue(4).ToString().Replace(',', '.'), m_objFormatProvider);
+                    float fPosY = float.Parse(rdr.GetValue(5).ToString().Replace(',', '.'), m_objFormatProvider);
+                    float fPosZ = float.Parse(rdr.GetValue(6).ToString().Replace(',', '.'), m_objFormatProvider);
+
+                    float fRotX = float.Parse(rdr.GetValue(7).ToString().Replace(',', '.'), m_objFormatProvider);
+                    float fRotY = float.Parse(rdr.GetValue(8).ToString().Replace(',', '.'), m_objFormatProvider);
+                    float fRotZ = float.Parse(rdr.GetValue(9).ToString().Replace(',', '.'), m_objFormatProvider);
+
+                    // comment is not loaded into server
+                    // string strComment = rdr.GetValue(10).ToString()
+
+                    m_listPointOfInterests.Add(new PointOfInterest_DB(ulEntry, ulGroup, ulType, ulMap, fPosX, fPosY, fPosZ, fRotX, fRotY, fRotZ));
+
+                    // check if this is a new grid?
+                    int gridX = (int)(fPosX / 32);
+                    int gridY = (int)(fPosY / 32);
+
+                    string strGridID = ulMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
+
+                    if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
+                    {
+                        m_listGrids.Add(new Grid((ulong)ulMap, (ulong)fPosX / 32, (ulong)fPosY / 32));
+                    }
+                }
+            }
+
+            txbLog.AppendText("PointsOfInterst loaded: " + m_listPointOfInterests.Count.ToString() + " Entries.\n");
+
+            rdr.Close();
 
             return true;
         }

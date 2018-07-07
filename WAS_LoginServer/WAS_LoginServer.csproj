@@ -60,6 +60,7 @@
       <DependentUpon>LoginServer.cs</DependentUpon>
     </Compile>
     <Compile Include="PlayerObject.cs" />
+    <Compile Include="PointOfInterest_DB.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="LoginServer.resx">
