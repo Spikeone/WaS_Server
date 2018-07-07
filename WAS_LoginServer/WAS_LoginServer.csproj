@@ -46,12 +46,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Configuration.cs" />
+    <Compile Include="GameObjectGUIDHandler.cs" />
+    <Compile Include="GameObjectTemplate_DB.cs" />
+    <Compile Include="GameObject_DB.cs" />
+    <Compile Include="Grid.cs" />
+    <Compile Include="Item.cs" />
+    <Compile Include="ItemTemplate_DB.cs" />
     <Compile Include="LoginServer.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="LoginServer.Designer.cs">
       <DependentUpon>LoginServer.cs</DependentUpon>
     </Compile>
+    <Compile Include="PlayerObject.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="LoginServer.resx">
