@@ -506,7 +506,7 @@ namespace WAS_LoginServer
             }
 
             // everything is fine, add it
-            m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strNickName, tmpItemList));
+            m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strNickName, tmpItemList, ulMap, fPosX, fPosY));
 
             // find equiped weapon
             ulong ulEntryWeapon = 0;
@@ -714,7 +714,7 @@ namespace WAS_LoginServer
 
                         if(!m_listGrids.Exists(item => item.getStringID() == strGridID))
                         {
-                            m_listGrids.Add(new Grid((ulong)fPosX/32, (ulong)fPosY/32));
+                            m_listGrids.Add(new Grid((ulong)uiMap, (ulong)fPosX/32, (ulong)fPosY/32));
                         }
                     }
                     else
@@ -935,18 +935,20 @@ namespace WAS_LoginServer
 
             if (usType == 0)
             {
-                string strGridID = ((ulong)posX / 32).ToString() + "|" + ((ulong)posY / 32).ToString();
+                string strGridID = objTempPlayer.GetMap().ToString() + "|" + ((ulong)posX / 32).ToString() + "|" + ((ulong)posY / 32).ToString();
 
                 if (objTempPlayer.m_strGridID != strGridID)
                 {
                     // set new grid ID
-                    objTempPlayer.m_strGridID = strGridID;
+                    //objTempPlayer.m_strGridID = strGridID;
+
+                    objTempPlayer.PlayerChangeGrid(strGridID, PLAYER_GRIDCHANGE_TYPE.BY_MOVEMENT);
 
                     // check if grid is loaded!
                     // if not, load it!
                     if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
                     {
-                        m_listGrids.Add(new Grid((ulong)posX / 32, (ulong)posY / 32));
+                        m_listGrids.Add(new Grid((ulong)objTempPlayer.GetMap(),(ulong)posX / 32, (ulong)posY / 32));
                     }
 
                     // check if player knows grid!

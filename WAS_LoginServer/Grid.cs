@@ -10,14 +10,16 @@ namespace WAS_LoginServer
     {
         private string strGridID;
         private ulong[] ulPosition = new ulong[2];
+        private ulong ulMapId;
         private List<ulong> ulPlayersLoaded;
 
-        public Grid(ulong posX, ulong posY)
+        public Grid(ulong ulMapId, ulong posX, ulong posY)
         {
             ulPosition[0] = posX;
             ulPosition[1] = posY;
+            this.ulMapId = ulMapId;
 
-            strGridID = ulPosition[0].ToString() + "|" + ulPosition[1].ToString();
+            strGridID = ulMapId.ToString() + "|" + ulPosition[0].ToString() + "|" + ulPosition[1].ToString();
 
             ulPlayersLoaded = new List<ulong>();
         }

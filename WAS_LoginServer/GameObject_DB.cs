@@ -76,7 +76,7 @@ namespace WAS_LoginServer
             int gridX = (int)(fPosX / 32);
             int gridY = (int)(fPosY / 32);
 
-            m_strGridID = gridX.ToString() + "|" + gridY.ToString();
+            m_strGridID = uiMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
 
             // check if grid exists
         }

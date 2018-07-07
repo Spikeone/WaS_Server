@@ -8,18 +8,35 @@ using System.Globalization;
 
 namespace WAS_LoginServer
 {
+    public enum PLAYER_GRIDCHANGE_TYPE : ulong
+    {
+        BY_MOVEMENT = 0, // Player has teleported to a specific point
+    }
+
     public class PlayerObject
     {
         public UInt64 m_uiGUID { get; set; }
         public Socket m_Socket { get; set; }
         public string m_strName { get; set; }
         public string m_strGridID { get; set; }
+        public ulong m_ulMap;
+
         private List<PlayerBodyObject> playerObjects { get; set; }
         private CultureInfo m_objFormatProvider;
 
         private ulong m_ulEquipedWeapon = 0;
 
         private List<ulong> m_listItemGUIDs;
+
+        public ulong GetMap()
+        {
+            return m_ulMap;
+        }
+
+        public void SetMap(ulong ulNewMap)
+        {
+            m_ulMap = ulNewMap;
+        }
 
         public ulong getEquipment(ulong ulndex)
         {
@@ -107,6 +124,40 @@ namespace WAS_LoginServer
         public void updatePlayerBodyTransform(UInt16 uiType, float newPosX, float newPosY, float newPosZ, float newRotX, float newRotY, float newRotZ, float newRotW)
         {
             (playerObjects.Find(x => x.m_uiType == uiType)).setTransform(newPosX, newPosY, newPosZ, newRotX, newRotY, newRotZ, newRotW);
+
+            // check if it's the head
+            //if(uiType == 0)
+            //{
+            //    // check if grid is same (Client can not change map!)
+            //    string strTempGrid = m_ulMap.ToString() + "|" + newPosX.ToString() + "|" + newPosY.ToString();
+            //
+            //    // Grid changed
+            //    if(m_strGridID != strTempGrid)
+            //    {
+            //        PlayerChangeGrid(strTempGrid, PLAYER_GRIDCHANGE_TYPE.BY_MOVEMENT);
+            //    }
+            //}
+        }
+
+        public void PlayerChangeGrid(string strNewGrid, PLAYER_GRIDCHANGE_TYPE eChangeType)
+        {
+            switch(eChangeType)
+            {
+                case PLAYER_GRIDCHANGE_TYPE.BY_MOVEMENT:
+                    {
+                        // TODO: This is where one could implement a check if the distances is too far or if the player could even move
+
+                        // Update Grid
+                        m_strGridID = strNewGrid;
+
+                        // Load Objects
+                    }
+                    break;
+                default:
+                    {
+
+                    }break;
+            }
         }
 
         public void updatePlayerBodyRotation(UInt16 uiType, float newRotX, float newRotY, float newRotZ, float newRotW)
@@ -131,12 +182,14 @@ namespace WAS_LoginServer
             (playerObjects.Find(x => x.m_uiType == uiType)).m_uiState = uiNewState;
         }
 
-        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName)
+        /*
+        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName, ulong ulMap, float fPosX, float fPosY)
         {
             this.m_uiGUID = uiGUID;
             this.m_Socket = Socket;
             this.m_Socket.NoDelay = true;
             this.m_strName = strName;
+            this.m_ulMap = ulMap;
 
             m_objFormatProvider = CultureInfo.CreateSpecificCulture("en-US");
 
@@ -147,14 +200,19 @@ namespace WAS_LoginServer
             playerObjects.Add(new PlayerBodyObject(0, 0));
             playerObjects.Add(new PlayerBodyObject(1, 0));
             playerObjects.Add(new PlayerBodyObject(2, 0));
-        }
 
-        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName, List<Item> lItems)
+            // set Grid
+            m_strGridID = ulMap.ToString() + "|" + fPosX.ToString() + "|" + fPosY.ToString();
+        }*/
+
+
+        public PlayerObject(UInt64 uiGUID, Socket Socket, string strName, List<Item> lItems, ulong ulMap, float fPosX, float fPosY)
         {
             this.m_uiGUID = uiGUID;
             this.m_Socket = Socket;
             this.m_Socket.NoDelay = true;
             this.m_strName = strName;
+            this.m_ulMap = ulMap;
 
             m_objFormatProvider = CultureInfo.CreateSpecificCulture("en-US");
 
@@ -171,11 +229,15 @@ namespace WAS_LoginServer
 
             if (lItems.Exists(item => (item.getState() == 2)))
                 m_ulEquipedWeapon = lItems.Find(item => (item.getState() == 2)).getEntry();
+
+            // set Grid
+            m_strGridID = ulMap.ToString() + "|" + fPosX.ToString() + "|" + fPosY.ToString();
         }
 
         ~PlayerObject()
         {
             playerObjects.Clear();
+            m_listItemGUIDs.Clear();
             m_Socket.Close();
             m_Socket = null;
             m_objFormatProvider = null;
