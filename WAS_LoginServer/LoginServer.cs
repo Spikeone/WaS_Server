@@ -1049,5 +1049,85 @@ namespace WAS_LoginServer
         {
             m_listPlayerObject.RemoveAll(item => item.m_Socket == s);
         }
+
+        public void PlayerUseGameobject(PlayerObject objPlayer, ulong ulObjectGUID)
+        {
+            // If everything is okay, then this should stay 0
+            ulong ulError = 0;
+            GameObject_DB gobject;
+            GameObjectTemplate_DB gobject_template;
+
+            // first of all find the gameobject, it's needed for distance checks and such stuff
+            if (!m_listGameObjects.Exists(item => item.getGUID() == ulObjectGUID))
+                ulError = 1;
+            else
+            {
+                gobject = m_listGameObjects.Find(item => item.getGUID() == ulObjectGUID);
+                // TODO: Distance checks, key checks, cooldown checks, in combat checks etc.
+
+                if (!m_listGameObjectTemplates.Exists(item => item.getEntry() == gobject.getEntry()))
+                    ulError = 2;
+                else
+                {
+                    gobject_template = m_listGameObjectTemplates.Find(item => item.getEntry() == gobject.getEntry());
+
+                    // now use the gameobject
+                    switch(gobject_template.GetObjecttType())
+                    {
+                        case 0: // TextObject, can't use that!
+                            {
+                                ulError = 3;
+                            }break;
+                        case 1: // Teleport Object
+                            {
+                                // Data 0 = Target Point (if negative it's a group) // TODO: Implement groups
+                                // Data 1 = Key // TODO: Implement Keys
+
+                                PointOfInterest_DB poi;
+
+                                if(!m_listPointOfInterests.Exists(item => item.GetPOIEntry() == gobject_template.getData(0)))
+                                {
+                                    // This is bad - thats a serverside error
+                                    ulError = 4;
+                                }
+                                else
+                                {
+                                    // get the POI
+                                    poi = m_listPointOfInterests.Find(item => item.GetPOIEntry() == gobject_template.getData(0));
+
+                                    // Now two things must happen:
+                                    // 1 - Tell the player he has to relocate
+                                    // 2 - Update the map as this is the only thing the client isn't allowed to do
+
+                                    // Step 1:
+                                    // Build a package with the following data:
+                                    // Target Map
+                                    // Target Position
+                                    string strData = "|0x801/" + poi.GetPOIDataSerialized();
+                                    SendData(objPlayer.m_Socket, strData);
+
+                                    // Step 2: 
+                                    // Update PlayerMap
+                                    // Position isn't really updated - it't just used to calculate the target grid (for loading gobjects)
+                                    // without sending the position, the player would receive stuff for the same grid he was on but different map
+                                    objPlayer.UpdateMap(poi.GetPOIMap(), poi.GetPositionX(), poi.GetPositionY());
+                                }
+                            }break;
+                        default:
+                            {
+                                ulError = 3;
+                            }break;
+                    }
+                }
+            }
+
+            // something bad happened
+            if(ulError != 0)
+            {
+                string strData = "|0x800/" + "ERROR_GOBJECT_CANTUSE";
+                SendData(objPlayer.m_Socket,strData);
+            }
+            
+        }
     }
 }

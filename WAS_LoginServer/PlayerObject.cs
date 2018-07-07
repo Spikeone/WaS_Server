@@ -121,6 +121,17 @@ namespace WAS_LoginServer
             return strData;
         }
 
+        public void UpdateMap(ulong NewMap, float pos_x, float pos_z)
+        {
+            // set Grid
+            int gridX = (int)(pos_x / 32);
+            int gridY = (int)(pos_z / 32);
+
+            m_strGridID = NewMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
+
+            m_ulMap = NewMap;
+        }
+
         public void updatePlayerBodyTransform(UInt16 uiType, float newPosX, float newPosY, float newPosZ, float newRotX, float newRotY, float newRotZ, float newRotW)
         {
             (playerObjects.Find(x => x.m_uiType == uiType)).setTransform(newPosX, newPosY, newPosZ, newRotX, newRotY, newRotZ, newRotW);
@@ -231,7 +242,10 @@ namespace WAS_LoginServer
                 m_ulEquipedWeapon = lItems.Find(item => (item.getState() == 2)).getEntry();
 
             // set Grid
-            m_strGridID = ulMap.ToString() + "|" + fPosX.ToString() + "|" + fPosY.ToString();
+            int gridX = (int)(fPosX / 32);
+            int gridY = (int)(fPosY / 32);
+
+            m_strGridID = ulMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
         }
 
         ~PlayerObject()

@@ -5,27 +5,30 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Globalization;
 
+// Type 0 = Textobject
+// Type 1 = Teleporter
+
 namespace WAS_LoginServer
 {
     public class GameObjectTemplate_DB
     {
-        private UInt64 m_uiEntry;
-        private UInt64 m_uiType;
-        private UInt64 m_uiDisplayID;
+        private ulong m_uiEntry;
+        private ulong m_uiType;
+        private ulong m_uiDisplayID;
         private string m_strName;
         private float m_fScale;
-        private UInt64[] m_uiData = new UInt64[8];
+        private ulong[] m_uiData = new ulong[8];
         private string m_strScriptName;
         //public string m_strComment;
 
-        public UInt64 getEntry() { return m_uiEntry; }
-        public void setEntry(UInt64 m_uiNewEntry) { this.m_uiEntry = m_uiNewEntry; }
+        public ulong getEntry() { return m_uiEntry; }
+        public void setEntry(ulong m_uiNewEntry) { this.m_uiEntry = m_uiNewEntry; }
 
-        public UInt64 getType() { return m_uiType; }
-        public void setType(UInt64 m_uiNewType) { this.m_uiType = m_uiNewType; }
+        public ulong GetObjecttType() { return m_uiType; }
+        public void SetObjectType(ulong m_uiNewType) { this.m_uiType = m_uiNewType; }
 
-        public UInt64 getDisplayID() { return m_uiDisplayID; }
-        public void setDisplayID(UInt64 m_uiNewDisplayID) { this.m_uiDisplayID = m_uiNewDisplayID; }
+        public ulong getDisplayID() { return m_uiDisplayID; }
+        public void setDisplayID(ulong m_uiNewDisplayID) { this.m_uiDisplayID = m_uiNewDisplayID; }
 
         public string getName() { return m_strName; }
         public void setName(string m_strNewName) { this.m_strName = m_strNewName; }
@@ -62,7 +65,7 @@ namespace WAS_LoginServer
             return strData;
         }
 
-        public UInt64 getData(UInt16 uiIndex)
+        public ulong getData(ushort uiIndex)
         {
             if (uiIndex < 0 || uiIndex >= 8)
                 return 0;
@@ -70,15 +73,14 @@ namespace WAS_LoginServer
             return m_uiData[uiIndex];
         }
 
-        public void setData(UInt16 uiIndex, UInt64 uiData)
+        public void setData(ushort uiIndex, ulong uiData)
         {
             if (uiIndex < 0 || uiIndex >= 8)
                 return;
 
             m_uiData[uiIndex] = uiData;
         }
-
-        public void setData(UInt64 uiData0, UInt64 uiData1, UInt64 uiData2, UInt64 uiData3, UInt64 uiData4, UInt64 uiData5, UInt64 uiData6, UInt64 uiData7)
+        public void setData(ulong uiData0, ulong uiData1, ulong uiData2, ulong uiData3, ulong uiData4, ulong uiData5, ulong uiData6, ulong uiData7)
         {
             m_uiData[0] = uiData0;
             m_uiData[1] = uiData1;
@@ -90,7 +92,7 @@ namespace WAS_LoginServer
             m_uiData[7] = uiData7;
         }
 
-        public GameObjectTemplate_DB(UInt64 m_uiEntry, UInt64 m_uiType, UInt64 m_uiDisplayID, string m_strName, float m_fScale, UInt64 uiData0, UInt64 uiData1, UInt64 uiData2, UInt64 uiData3, UInt64 uiData4, UInt64 uiData5, UInt64 uiData6, UInt64 uiData7, string m_strScriptName)
+        public GameObjectTemplate_DB(ulong m_uiEntry, ulong m_uiType, ulong m_uiDisplayID, string m_strName, float m_fScale, ulong uiData0, ulong uiData1, ulong uiData2, ulong uiData3, ulong uiData4, ulong uiData5, ulong uiData6, ulong uiData7, string m_strScriptName)
         {
             this.m_uiEntry = m_uiEntry;
             this.m_uiType = m_uiType;

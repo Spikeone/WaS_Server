@@ -29,6 +29,27 @@ namespace WAS_LoginServer
 
         public string GetPOIGridID() { return m_strGridID; }
 
+        // returns a string as follows:
+        // "ulMap/posx/posy/posz/rotx/roty/rotz"
+        public string GetPOIDataSerialized()
+        {
+            string strSerializedData = "";
+
+            strSerializedData = m_ulMap.ToString();
+
+            for (int i = 0; i < 6; i++)
+                strSerializedData += "/" + m_fPosition[i].ToString();
+
+            return strSerializedData;
+        }
+
+        public float GetPositionX() { return m_fPosition[0]; }
+        public float GetPositionY() { return m_fPosition[1]; }
+        public float GetPositionZ() { return m_fPosition[2]; }
+        public float GetRotationX() { return m_fPosition[3]; }
+        public float GetRotationY() { return m_fPosition[4]; }
+        public float GetRotationZ() { return m_fPosition[5]; }
+
         public void GetPosition(ref float pos_x, ref float pos_y, ref float pos_z, ref float rot_x, ref float rot_y, ref float rot_z)
         {
             pos_x = m_fPosition[0];
