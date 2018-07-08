@@ -321,6 +321,34 @@ namespace WAS_LoginServer
                 case "0x200":
                     handleItemTemplateRequest(s, strData);
                     break;
+                case "0x803":
+                    handlePlayerUseGameobject(s, strData);
+                    break;
+            }
+        }
+
+        private void handlePlayerUseGameobject(Socket s, string strData)
+        {
+            txbLog.AppendText("handlePlayerUseGameobject(s, '" + strData + "')\n");
+
+            string[] splittedData = strData.Split('/');
+            // 0 = 0x803
+            // 1 = player GUID
+            // 2 = object GUID
+
+            ulong ulPlrGUID = 0;
+            ulong ulGobjectGUID = 0;
+
+            try
+            {
+                ulPlrGUID = ulong.Parse(splittedData[1], m_objFormatProvider);
+                ulGobjectGUID = ulong.Parse(splittedData[2], m_objFormatProvider);
+
+                PlayerUseGameobject(ulPlrGUID, ulGobjectGUID);
+            }
+            catch (Exception ex)
+            {
+                txbLog.AppendText("ERROR: handlePlayerUseGameobject Message: " + ex.Message + "\n");
             }
         }
 
@@ -509,6 +537,14 @@ namespace WAS_LoginServer
                 }
 
             }
+
+            // output grid
+            int gridX = (int)(fPosX / 32);
+            int gridY = (int)(fPosY / 32);
+
+            string strGridID = ulMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
+
+            txbLog.AppendText("Player spawned in grid: '" + strGridID +"\n");
 
             // everything is fine, add it
             m_listPlayerObject.Add(new PlayerObject(ulGUID, s, strNickName, tmpItemList, ulMap, fPosX, fPosY));
@@ -721,7 +757,7 @@ namespace WAS_LoginServer
 
                     if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
                     {
-                        m_listGrids.Add(new Grid((ulong)ulMap, (ulong)fPosX / 32, (ulong)fPosY / 32));
+                        m_listGrids.Add(new Grid((ulong)ulMap, (int)(fPosX / 32), (int)(fPosY / 32)));
                     }
                 }
             }
@@ -766,10 +802,11 @@ namespace WAS_LoginServer
 
                         // check if this is a new grid?
                         string strGridID = m_listGameObjects.Find(item => item.getGUID() == uiGUID).getGridID();
+                        txbLog.AppendText("Gameobject: " + uiEntry.ToString() + " is in Grid: " + strGridID + "\n");
 
-                        if(!m_listGrids.Exists(item => item.getStringID() == strGridID))
+                        if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
                         {
-                            m_listGrids.Add(new Grid((ulong)uiMap, (ulong)fPosX/32, (ulong)fPosY/32));
+                            m_listGrids.Add(new Grid((ulong)uiMap, (int)(fPosX/32), (int)(fPosY/32)));
                         }
                     }
                     else
@@ -990,10 +1027,15 @@ namespace WAS_LoginServer
 
             if (usType == 0)
             {
-                string strGridID = objTempPlayer.GetMap().ToString() + "|" + ((ulong)posX / 32).ToString() + "|" + ((ulong)posY / 32).ToString();
+                int gridX = (int)(posX / 32);
+                int gridY = (int)(posY / 32);
+
+                string strGridID = objTempPlayer.GetMap().ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
 
                 if (objTempPlayer.m_strGridID != strGridID)
                 {
+                    txbLog.AppendText("Player moved from Grid: " + objTempPlayer.m_strGridID + " to: " + strGridID + "\n");
+
                     // set new grid ID
                     //objTempPlayer.m_strGridID = strGridID;
 
@@ -1003,7 +1045,7 @@ namespace WAS_LoginServer
                     // if not, load it!
                     if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
                     {
-                        m_listGrids.Add(new Grid((ulong)objTempPlayer.GetMap(),(ulong)posX / 32, (ulong)posY / 32));
+                        m_listGrids.Add(new Grid((ulong)objTempPlayer.GetMap(), gridX, gridY));
                     }
 
                     // check if player knows grid!
@@ -1048,6 +1090,12 @@ namespace WAS_LoginServer
         private void removePlayerObjectBySocket (Socket s)
         {
             m_listPlayerObject.RemoveAll(item => item.m_Socket == s);
+        }
+
+        public void PlayerUseGameobject(ulong ulPlayerGUID, ulong ulObjectGUID)
+        {
+            PlayerObject objTmpPlayer = m_listPlayerObject.Find(item => item.m_uiGUID == ulPlayerGUID);
+            PlayerUseGameobject(objTmpPlayer, ulObjectGUID);
         }
 
         public void PlayerUseGameobject(PlayerObject objPlayer, ulong ulObjectGUID)
@@ -1104,6 +1152,8 @@ namespace WAS_LoginServer
                                     // Target Map
                                     // Target Position
                                     string strData = "|0x801/" + poi.GetPOIDataSerialized();
+
+                                    txbLog.AppendText("Sending: " + strData + "\n");
                                     SendData(objPlayer.m_Socket, strData);
 
                                     // Step 2: 

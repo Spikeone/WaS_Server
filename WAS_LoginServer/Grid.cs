@@ -9,17 +9,17 @@ namespace WAS_LoginServer
     public class Grid
     {
         private string strGridID;
-        private ulong[] ulPosition = new ulong[2];
+        private int[] iPosition = new int[2];
         private ulong ulMapId;
         private List<ulong> ulPlayersLoaded;
 
-        public Grid(ulong ulMapId, ulong posX, ulong posY)
+        public Grid(ulong ulMapId, int posX, int posY)
         {
-            ulPosition[0] = posX;
-            ulPosition[1] = posY;
+            iPosition[0] = posX;
+            iPosition[1] = posY;
             this.ulMapId = ulMapId;
 
-            strGridID = ulMapId.ToString() + "|" + ulPosition[0].ToString() + "|" + ulPosition[1].ToString();
+            strGridID = ulMapId.ToString() + "|" + iPosition[0].ToString() + "|" + iPosition[1].ToString();
 
             ulPlayersLoaded = new List<ulong>();
         }
@@ -34,10 +34,10 @@ namespace WAS_LoginServer
             return ulPlayersLoaded.Contains(ulPlayerGUID);
         }
 
-        public void getPosition(ref ulong posx, ref ulong posy)
+        public void getPosition(ref int posx, ref int posy)
         {
-            posx = ulPosition[0];
-            posy = ulPosition[1];
+            posx = iPosition[0];
+            posy = iPosition[1];
         }
 
         public string getStringID()
