@@ -248,14 +248,30 @@ namespace WAS_LoginServer
             m_strGridID = ulMap.ToString() + "|" + gridX.ToString() + "|" + gridY.ToString();
         }
 
-        ~PlayerObject()
+        public void Dispose()
         {
-            playerObjects.Clear();
-            m_listItemGUIDs.Clear();
-            m_Socket.Close();
-            m_Socket = null;
-            m_objFormatProvider = null;
+            //foreach(PlayerBodyObject plrbdy in playerObjects)
+            //{
+            //    plrbdy.Dispose();
+            //}
+            //
+            //playerObjects.Clear();
+            //playerObjects = null;
+            //m_listItemGUIDs.Clear();
+            //m_listItemGUIDs = null;
+            //m_Socket.Close();
+            //m_Socket = null;
+            //m_objFormatProvider = null;
         }
+
+        //~PlayerObject()
+        //{
+        //    playerObjects.Clear();
+        //    m_listItemGUIDs.Clear();
+        //    m_Socket.Close();
+        //    m_Socket = null;
+        //    m_objFormatProvider = null;
+        //}
     }
 
     public class PlayerBodyObject
@@ -366,6 +382,12 @@ namespace WAS_LoginServer
             m_fRotation[1] = roty;
             m_fRotation[2] = rotz;
             m_fRotation[3] = rotw;
+        }
+
+        public void Dispose()
+        {
+            m_fPosition = null;
+            m_fRotation = null;
         }
     }
 }

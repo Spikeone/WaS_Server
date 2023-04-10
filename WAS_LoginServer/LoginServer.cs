@@ -57,7 +57,7 @@ namespace WAS_LoginServer
 {
     public partial class frmLoginServer : Form
     {
-        private bool sendSelf = true;
+        private bool sendSelf = false;
 
         private byte[] m_buffer = new byte[8092];
         private Socket m_ServerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -265,6 +265,8 @@ namespace WAS_LoginServer
 
         private void SendAllPlayersToSocket(Socket s)
         {
+            //txbLog.AppendText("PlayerObjects: " + m_listPlayerObject.Count.ToString() + "\n");
+
             for (int i = 0; i < m_listPlayerObject.Count; i++)
             {
                 if (m_listPlayerObject[i].m_Socket != s)
@@ -557,8 +559,11 @@ namespace WAS_LoginServer
 
             // tell player who he is
             // build message
-            string strLoginResult = "|0x002/1/" + ulGUID.ToString();
+            //string strLoginResult = "|0x002/1/" + ulGUID.ToString();
+            // Add Map/posx/posy/posz/rotx/roty/rotz
+            string strLoginResult = "|0x002/1/" + ulGUID.ToString() + "/" + ulMap.ToString(m_objFormatProvider) + "/" + fPosX.ToString(m_objFormatProvider) + "/" + fPosY.ToString(m_objFormatProvider) + "/" + fPosZ.ToString(m_objFormatProvider) + "/" + fRotX.ToString(m_objFormatProvider) + "/" + fRotY.ToString(m_objFormatProvider) + "/" + fRotZ.ToString(m_objFormatProvider);
             // currentguid = 
+            txbLog.AppendText("Sending: " + strLoginResult + "\n");
             SendData(s, strLoginResult);
 
             // now broadcast new player to everybody
@@ -613,6 +618,8 @@ namespace WAS_LoginServer
                 ulMap = ulong.Parse(rdr.GetValue(16).ToString());
             }
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
 
             return true;
         }
@@ -656,6 +663,8 @@ namespace WAS_LoginServer
                 status = ulong.Parse(rdr.GetValue(8).ToString());
             }
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
 
             if (status != 0)
                 return 4; // not active
@@ -714,7 +723,10 @@ namespace WAS_LoginServer
                     txbLog.AppendText("Could not load gameobject_template: " + row + "\n");
                 }
             }
+
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
 
             txbLog.AppendText("GameobjectTemplate loaded: " + m_listGameObjectTemplates.Count.ToString() + " Entries.\n");
 
@@ -765,6 +777,8 @@ namespace WAS_LoginServer
             txbLog.AppendText("PointsOfInterst loaded: " + m_listPointOfInterests.Count.ToString() + " Entries.\n");
 
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
 
             return true;
         }
@@ -825,6 +839,9 @@ namespace WAS_LoginServer
             txbLog.AppendText("Gameobject loaded: " + m_listGameObjects.Count.ToString() + " Entries.\n");
 
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
+
             return true;
         }
 
@@ -864,6 +881,8 @@ namespace WAS_LoginServer
             txbLog.AppendText("Item loaded: " + m_listItems.Count.ToString() + " Entries.\n");
 
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
 
             return true;
         }
@@ -946,6 +965,9 @@ namespace WAS_LoginServer
             txbLog.AppendText("item_template loaded: " + m_listItemTemplates.Count.ToString() + " Entries.\n");
 
             rdr.Close();
+            cmd.Dispose();
+            rdr.Dispose();
+
             return true;
         }
 
@@ -1050,22 +1072,23 @@ namespace WAS_LoginServer
 
                     // check if player knows grid!
                     // if not, send it to the player
-                    if (!(m_listGrids.Find(item => item.getStringID() == strGridID)).hasPlayer(ulGUID))
-                    {
-                        // player doesnt know grid, send all objects
-
-                        // get list of all objects
-                        List<GameObject_DB> lGameobjects = m_listGameObjects.Where(go => go.getGridID().Equals(strGridID)).ToList();
-
-                        foreach (GameObject_DB goob in lGameobjects)
-                        {
-                            string strDataToSend = "";
-
-                            strDataToSend = "|0x102/" + goob.serializeGameobject(m_objFormatProvider);
-
-                            SendData(s, strDataToSend);
-                        }
-                    }
+                    SendPlayerGridsObjects(objTempPlayer, objTempPlayer.m_strGridID, 1);
+                    ////if (!(m_listGrids.Find(item => item.getStringID() == strGridID)).hasPlayer(ulGUID))
+                    ////{
+                    ////    // player doesnt know grid, send all objects
+                    ////
+                    ////    // get list of all objects
+                    ////    List<GameObject_DB> lGameobjects = m_listGameObjects.Where(go => go.getGridID().Equals(strGridID)).ToList();
+                    ////
+                    ////    foreach (GameObject_DB goob in lGameobjects)
+                    ////    {
+                    ////        string strDataToSend = "";
+                    ////
+                    ////        strDataToSend = "|0x102/" + goob.serializeGameobject(m_objFormatProvider);
+                    ////
+                    ////        SendData(s, strDataToSend);
+                    ////    }
+                    ////}
                 }
             }
 
@@ -1089,6 +1112,13 @@ namespace WAS_LoginServer
 
         private void removePlayerObjectBySocket (Socket s)
         {
+            //m_listPlayerObject.RemoveAll(item => item.m_Socket == s);
+            List<PlayerObject> tmpPlrList = m_listPlayerObject.FindAll(item => item.m_Socket == s);
+
+            foreach(PlayerObject plr in tmpPlrList)
+            {
+                plr.Dispose();
+            }
             m_listPlayerObject.RemoveAll(item => item.m_Socket == s);
         }
 
@@ -1096,6 +1126,58 @@ namespace WAS_LoginServer
         {
             PlayerObject objTmpPlayer = m_listPlayerObject.Find(item => item.m_uiGUID == ulPlayerGUID);
             PlayerUseGameobject(objTmpPlayer, ulObjectGUID);
+        }
+
+        public void SendPlayerGridsObjects(PlayerObject objPlayer, string strGridID, int sDistance)
+        {
+            string[] splittedData = strGridID.Split('|');
+            int[] ulData = new int[3];
+            ulData[0] = int.Parse(splittedData[0], m_objFormatProvider); // mapid
+            ulData[1] = int.Parse(splittedData[1], m_objFormatProvider); // x
+            ulData[2] = int.Parse(splittedData[2], m_objFormatProvider); // y
+
+            // send all data
+            // x-1|y-1 . x-0|y-1 . x+1|y-1
+
+            // x-1|y-0 . x-0|y-0 . x+1|y-1
+
+            // x-1|y+1 . x-0|y+1 . x+1|y+1
+            
+            // this means 2x for 
+
+            for (int x = (ulData[1] - sDistance); x < (ulData[1] + sDistance); x++)
+            {
+                for (int y = (ulData[2] - sDistance); y < (ulData[2] + sDistance); y++)
+                {
+                    SendPlayerGridObjects(objPlayer, ulData[0].ToString() + "|" + x.ToString() + "|" + y.ToString());
+                }
+            }
+            
+        }
+
+        public void SendPlayerGridObjects(PlayerObject objPlayer, string strGridID)
+        {
+            // check if grid exists
+            if (!m_listGrids.Exists(item => item.getStringID() == strGridID))
+                return; // nothing to send
+
+
+            if (!(m_listGrids.Find(item => item.getStringID() == strGridID)).hasPlayer(objPlayer.m_uiGUID))
+            {
+                // player doesnt know grid, send all objects
+
+                // get list of all objects
+                List<GameObject_DB> lGameobjects = m_listGameObjects.Where(go => go.getGridID().Equals(strGridID)).ToList();
+
+                foreach (GameObject_DB goob in lGameobjects)
+                {
+                    string strDataToSend = "";
+
+                    strDataToSend = "|0x102/" + goob.serializeGameobject(m_objFormatProvider);
+
+                    SendData(objPlayer.m_Socket, strDataToSend);
+                }
+            }
         }
 
         public void PlayerUseGameobject(PlayerObject objPlayer, ulong ulObjectGUID)
@@ -1161,6 +1243,26 @@ namespace WAS_LoginServer
                                     // Position isn't really updated - it't just used to calculate the target grid (for loading gobjects)
                                     // without sending the position, the player would receive stuff for the same grid he was on but different map
                                     objPlayer.UpdateMap(poi.GetPOIMap(), poi.GetPositionX(), poi.GetPositionY());
+
+                                    // Step 3:
+                                    // Player is on a new map, check if he knows every gameobject
+                                    SendPlayerGridsObjects(objPlayer, objPlayer.m_strGridID, 1);
+                                    ////if (!(m_listGrids.Find(item => item.getStringID() == objPlayer.m_strGridID)).hasPlayer(objPlayer.m_uiGUID))
+                                    ////{
+                                    ////    // player doesnt know grid, send all objects
+                                    ////
+                                    ////    // get list of all objects
+                                    ////    List<GameObject_DB> lGameobjects = m_listGameObjects.Where(go => go.getGridID().Equals(objPlayer.m_strGridID)).ToList();
+                                    ////
+                                    ////    foreach (GameObject_DB goob in lGameobjects)
+                                    ////    {
+                                    ////        string strDataToSend = "";
+                                    ////
+                                    ////        strDataToSend = "|0x102/" + goob.serializeGameobject(m_objFormatProvider);
+                                    ////
+                                    ////        SendData(objPlayer.m_Socket, strDataToSend);
+                                    ////    }
+                                    ////}
                                 }
                             }break;
                         default:
